@@ -1,10 +1,9 @@
 #Press strg I to chat with copilot
 # ctrl + enter: gitub copilot suggestion
+# ctrl + alt + I: open chat view
 #debugging F5
 #Autoformation Shift+Alt+F
 # """ """ for multiline comments
-#test
-
 #==============================================================================
 # 1. Importing the data files & Data Exploration
 #==============================================================================
