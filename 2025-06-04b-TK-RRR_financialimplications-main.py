@@ -468,7 +468,7 @@ print(f"Average share of reported revenue in observed revenue: {df_long['TOTAL_R
 # Average share of reported revenue in observed revenue: 4.13 % 
 
 '''
-I hae shares of outliners above 100%
+I have shares of outliners above 100%
 '''
 
 
@@ -539,6 +539,33 @@ df_long['SALES_REV_TURN_LAG1'] = (
 df_long['REV_GROWTH_PCT'] = (np.log(df_long['SALES_REV_TURN'].replace(0, np.nan))- np.log(df_long['SALES_REV_TURN_LAG1'].replace(0, np.nan)))*100 # sales growth as percentage change of sales revenue from previous period for each firm
 df_long.drop(columns='SALES_REV_TURN_LAG1', inplace=True)
 
+
+df_long['RET_ARITH']  = np.exp(df_long['RETURN_LOG']) - 1 #percentage change over period, not additive, actual percentage change
+
+# 2) Calculate risk-free and market premiums using log-returns
+rf_log    = df_long.xs('USBMMY3M INDEX', level='FIRM')['RETURN_LOG']
+rf_arith  = np.exp(rf_log) - 1
+mkt_log   = df_long.xs('SPX INDEX',    level='FIRM')['RETURN_LOG']
+mkt_arith = np.exp(mkt_log) - 1
+
+dates = df_long.index.get_level_values('DATE')
+df_long['RF']     = rf_arith.reindex(dates).values
+df_long['MKT_RF'] = mkt_arith.reindex(dates).values - df_long['RF']
+df_long['MKT_RF'] = pd.to_numeric(df_long['MKT_RF'], errors='coerce')
+df_long['MKT_RF_LAG'] = df_long.groupby(level='FIRM')['MKT_RF'].shift(1)
+
+# 3) Lagged firm characteristics: SIZE, BTM and existing RRR_pct_lag1
+df_long['HISTORICAL_MARKET_CAP'] = pd.to_numeric(df_long['HISTORICAL_MARKET_CAP'], errors='coerce')
+size = np.log(df_long['HISTORICAL_MARKET_CAP'])
+df_long['SIZE_LAG'] = size.groupby(level='FIRM').shift(1)
+btm  = (df_long['BS_TOT_ASSET'] - df_long['BS_TOT_LIAB2']) / df_long['HISTORICAL_MARKET_CAP']
+df_long['BTM_LAG'] = btm.groupby(level='FIRM').shift(1)
+df_long['RRR_LAG'] = df_long['RRR_pct_lag1'] / 100
+
+# 4) Excess return calculation
+df_long['EXCESS_RET'] = df_long['RET_ARITH'] - df_long['RF']
+
+
 # download the data
 # Save the merged dataset to a new Excel file
 output_file = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\df_final-20250315.xlsx"
@@ -593,6 +620,8 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
             plt.xlabel(col)
             plt.ylabel('Frequency')
             plt.hist(data_filtered)
+            plt.title(f'Histogram of {col}')
+            plt.show()
             
     # Run panel regression using PanelOLS
     if len(columns) > 1:
@@ -604,8 +633,9 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
         
         model = PanelOLS(y_reg, X_reg, 
                          entity_effects=firm_effect, 
-                         time_effects=time_effect)
-        results = model.fit()
+                         time_effects=time_effect,
+                         drop_absorbed=True)
+        results = model.fit(cov_type='clustered', cluster_entity=True, cluster_time=True)
         print("\nPanel Regression Results:")
         print(results.summary)
     else:
@@ -630,7 +660,7 @@ analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','REVENUE_NEW_GROWTH_PC
 
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True)
 
-analyze_columns(['HISTORICAL_MARKET_CAP', 'RETAINED_REV_EST', 'NEW_REV_EST', 'BS_TOT_ASSET'], firm_effect=True, time_effect=True)
+#analyze_columns(['HISTORICAL_MARKET_CAP', 'RETAINED_REV_EST', 'NEW_REV_EST', 'BS_TOT_ASSET'], firm_effect=True, time_effect=True)
 
 
 '''
@@ -638,48 +668,18 @@ Ergebnis kann nicht sein
 analyze_columns(['REVENUE_MULTIPLE', 'RETAINED_REV_EST', 'NEW_REV_EST', 'BS_TOT_ASSET'], firm_effect=True, time_effect=True, show_plots=False)
 analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 '''
-df_long['RET_ARITH']  = np.exp(df_long['RETURN_LOG']) - 1 #percentage change over period, not additive, actual percentage change
 
-# 2) Calculate risk-free and market premiums using log-returns
-rf_log    = df_long.xs('USBMMY3M INDEX', level='FIRM')['RETURN_LOG']
-rf_arith  = np.exp(rf_log) - 1
-mkt_log   = df_long.xs('SPX INDEX',    level='FIRM')['RETURN_LOG']
-mkt_arith = np.exp(mkt_log) - 1
+analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG'], firm_effect=False, time_effect=False, show_plots=False)
+analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG','RRR_pct_lag1'], firm_effect=False, time_effect=False, show_plots=False)
+'''
+to predict or to explain?
+'''
+analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE_LAG', 'BTM_LAG','RRR_pct','RRR_pct_lag1'], firm_effect=False, time_effect=False, show_plots=False)
 
-dates = df_long.index.get_level_values('DATE')
-df_long['RF']     = rf_arith.reindex(dates).values
-df_long['MKT_RF'] = mkt_arith.reindex(dates).values - df_long['RF']
-
-# 3) Lagged firm characteristics: SIZE, BTM and existing RRR_pct_lag1
-df_long['HISTORICAL_MARKET_CAP'] = pd.to_numeric(df_long['HISTORICAL_MARKET_CAP'], errors='coerce')
-size = np.log(df_long['HISTORICAL_MARKET_CAP'])
-df_long['SIZE_LAG'] = size.groupby(level='FIRM').shift(1)
-btm  = (df_long['BS_TOT_ASSET'] - df_long['BS_TOT_LIAB2']) / df_long['HISTORICAL_MARKET_CAP']
-df_long['BTM_LAG'] = btm.groupby(level='FIRM').shift(1)
-df_long['RRR_LAG'] = df_long['RRR_pct_lag1'] / 100
-
-# 4) Excess return calculation
-df_long['EXCESS_RET'] = df_long['RET_ARITH'] - df_long['RF']
-
-# 5) Run panel regression with firm fixed effects
-panel = df_long.dropna(subset=['EXCESS_RET', 'MKT_RF', 'SIZE_LAG', 'BTM_LAG', 'RRR_LAG'])
-Y = panel['EXCESS_RET']
-X = sm.add_constant(panel[['MKT_RF', 'SIZE_LAG', 'BTM_LAG', 'RRR_LAG']])
-
-res = PanelOLS(Y, X, entity_effects=True)  
-results = res.fit(cov_type='clustered', cluster_entity=True)
-print(results.summary)
-
-
-# 2) Define Y and X **without** a constant
-Y = panel['EXCESS_RET']
-X = panel[['MKT_RF','SIZE_LAG','BTM_LAG','RRR_LAG']]
-
-# 3) Fit with only firm fixed effects (no common intercept)
-model = PanelOLS(Y, X, entity_effects=True)
-results = model.fit(cov_type='clustered', cluster_entity=True)
-
-print(results.summary)
+'''
+why do I get those results?
+- RRR is not significant, but the lagged RRR is significant
+'''
 
 
 #==============================================================================
@@ -688,7 +688,7 @@ print(results.summary)
 
 def quartile_cumulative_returns(
     df_long: pd.DataFrame,
-    weight_by_mcap: bool = False
+    weight_by_mcap: bool = True
 ):
     """
     1) Assign each firm to one of four RRR quartiles per quarter (using RRR_LAG).
@@ -787,8 +787,7 @@ def quartile_cumulative_returns(
 
     return cum_with_start
 
-# Equal‐weighted:
-# cum_eq = quartile_cumulative_returns(df_long, weight_by_mcap=False)
+
 
 # Value‐weighted by market cap:
 cum_vw = quartile_cumulative_returns(df_long, weight_by_mcap=True)
