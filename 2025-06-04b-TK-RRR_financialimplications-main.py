@@ -12,6 +12,11 @@ import pandas as pd
 import openpyxl
 import numpy as np
 
+###To DO
+# correct risk free rate to quarterly return
+# add portfolio descriptions
+# maybe change code sections merging before data analysis, as when merging I discovered that I need to drop a firm -> backwards now
+
 # Importing the data files
 # Firm Funamentals
 file1_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-0319a-TK-fundamentals-python.xlsx"
@@ -88,12 +93,14 @@ data_rows_rev.rename(columns={data_rows_rev.columns[0]: 'Date'}, inplace=True);
 df_revenue = data_rows_rev.reset_index(drop=True);
 
 ### replace empty cells with NaN
-### replace empty cells with NaN
-### replace empty cells with NaN
 df_revenue = df_revenue.replace(r'^\s*$', pd.NA, regex=True);
 
-#Add totel and RRR and shares
-#Add totel and RRR and shares
+#DROP CART US EQUITY columns
+df_revenue = df_revenue.loc[
+    :, 
+    ~df_revenue.columns.str.contains('CART US EQUITY', case=False)
+]
+
 #Add totel and RRR and shares
 # Remove duplicate columns
 df_revenue = df_revenue.loc[:, ~df_revenue.columns.duplicated()];
@@ -103,7 +110,6 @@ returning_customer_cols = [col for col in df_revenue.columns if '#Returning_Cust
 
 """
 code is slow not optimal-> try to improve
-multiply growth, share by 100 and RRR to get %
 """
 
 # Create new columns for Total Revenue, share, RRR, revenue growth, and revenue_new_growth
@@ -250,7 +256,7 @@ for metric in columns_of_interest:
         value_name=metric
     )
 
-    # Remove the top 4 highest values correctly
+    # Remove the top 4 highest values correctly for display purposes (not statistics)
     df_filtered = df_metric_melted.copy()
     df_filtered = df_filtered[df_filtered[metric] < df_filtered[metric].nlargest(4).min()]  # Exclude top 4 values
 
@@ -444,11 +450,6 @@ df_long = df_long.pivot_table(
 # Set the MultiIndex for panel regression
 df_long = df_long.set_index(['FIRM', 'DATE'])
 
-'''
-Problem: unit metric is off between total revenue and sales revenue
-guess: total revenue in actual dollars, sales revenue in Millions
-outliners are very high -> above 40% and 2 over 100% what is the reason?
-'''
 
 # Test the revenue data
 correlation_test = df_long['#TOTAL_REVENUE'].corr(df_long['SALES_REV_TURN'])
@@ -468,7 +469,27 @@ print(f"Average share of reported revenue in observed revenue: {df_long['TOTAL_R
 # Average share of reported revenue in observed revenue: 4.13 % 
 
 '''
-I have shares of outliners above 100%
+I have shares of outliners above 100%-> cant be
+# 1) Create the mask for ratios above 100%
+mask = df_long['TOTAL_REVENUE_PCT_SALES_REV_TURN'] > 60
+
+# 2) Extract and view those rows
+outliers = df_long.loc[mask].reset_index()
+print(f"Found {len(outliers)} rows with ratio > 100%:")
+print(outliers[['FIRM', 'DATE', 'TOTAL_REVENUE_PCT_SALES_REV_TURN']])
+
+VARIABLE            FIRM       DATE TOTAL_REVENUE_PCT_SALES_REV_TURN
+0         CART US EQUITY 2019-03-29                       109.350886
+1         CART US EQUITY 2019-06-28                       104.114378
+manually check in the data
+
+Data points in ALTD: 44833863.1, 47892613.98
+Data points in Fund: 41 46
+
+if i lower the threshold to 60 it seems to only concern the CART US EQUITY
+-> exclude CART US Equity
+-> exclude it in the alt D data already in case it screws the revenue portfolio analysis
+
 '''
 
 
@@ -500,10 +521,27 @@ df_long['REVENUE_MULTIPLE'] = (
 #Calculate Retained Revenue Estimate
 df_long['RETAINED_REV_EST'] = df_long['#RRR'] * df_long['SALES_REV_TURN'].shift(1) # in million
 
-'''
-what do you do when est new rev < 0 ?
-'''
+
 df_long['NEW_REV_EST'] = df_long['SALES_REV_TURN'] - df_long['RETAINED_REV_EST'] # in million
+# Check if any NEW_REV_EST values are negative
+if (df_long['NEW_REV_EST'] < 0).any():
+    print("There are rows with NEW_REV_EST < 0.")
+else:
+    print("No rows with NEW_REV_EST < 0.")
+
+'''
+what do you do when est new rev < 0 ? ->nothing? estimation error
+# 1) Create a boolean mask for negative new revenue estimates
+mask_neg_new_rev = df_long['NEW_REV_EST'] < 0
+
+# 2) View all rows where NEW_REV_EST is negative
+negative_new_rev = df_long.loc[mask_neg_new_rev]
+
+# 3) Optionally, display only the key columns (Firm, Date, NEW_REV_EST)
+print(negative_new_rev.reset_index()[['FIRM', 'DATE', 'NEW_REV_EST']])
+400 rows
+'''
+
 df_long['SALES_REV_TURN_EST'] = df_long['RETAINED_REV_EST'] + df_long['NEW_REV_EST'] # in million
 
 print(f"Correlation between SALES REV TURN and the Estimated through RRR and lag is: {df_long['SALES_REV_TURN_EST'].corr(df_long['SALES_REV_TURN']):.2f}")
