@@ -13,6 +13,7 @@ import openpyxl
 import numpy as np
 
 ###To DO
+# rerun regressions with ALTD Revenue
 # correct risk free rate to quarterly return
 # add portfolio descriptions
 # maybe change code sections merging before data analysis, as when merging I discovered that I need to drop a firm -> backwards now
@@ -452,12 +453,11 @@ df_long = df_long.set_index(['FIRM', 'DATE'])
 
 
 # Test the revenue data
-correlation_test = df_long['#TOTAL_REVENUE'].corr(df_long['SALES_REV_TURN'])
-print(f"Correlation between merged datasets is: {correlation_test:.2f}")
+print(f"Correlation between merged datasets is: {df_long['#TOTAL_REVENUE'].corr(df_long['SALES_REV_TURN']):.2f}")
 #Correlation between merged datasets is: 0.94
 
 # Share of #Total_Revenue of SALES_REV_TURN in % 
-df_long['TOTAL_REVENUE_PCT_SALES_REV_TURN'] = (df_long['#TOTAL_REVENUE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) / 1000000 * 100 # /10000000 to account for unit difference * 100 for percentage
+df_long['TOTAL_REVENUE_PCT_SALES_REV_TURN'] = (df_long['#TOTAL_REVENUE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) / 1000000 * 100 # /1000000 to account for unit difference * 100 for percentage
 # Create the boxplot
 plt.figure(figsize=(6, 4))
 plt.boxplot(df_long['TOTAL_REVENUE_PCT_SALES_REV_TURN'], vert=True)
@@ -497,28 +497,17 @@ if i lower the threshold to 60 it seems to only concern the CART US EQUITY
 ### Add needed columns to the dataset
 ### Add needed columns to the dataset
 
+# 1) Estimate new and retained revenue by scaling with the total‐revenue ratio
+df_long['NEW_REV_EST']   = df_long['#NEW_CUSTOMERS']      / (df_long['TOTAL_REVENUE_PCT_SALES_REV_TURN'] / 100) / 1000000
+df_long['RETAINED_REV_EST']   = df_long['#RETURNING_CUSTOMERS'] / (df_long['TOTAL_REVENUE_PCT_SALES_REV_TURN'] / 100) / 1000000 #to account for uni displayment F Data is displayed in millions
 
-# Multiply RRR and IS_SGA_EXPENSE (as % of SALES_REV_TURN) by 100
-df_long['RRR_pct'] = df_long['#RRR'] * 100
-# Create a one-period lagged version of RRR_pct for each firm
-df_long['RRR_pct_lag1'] = df_long.groupby(level='FIRM')['RRR_pct'].shift(1)
+# 2) Sum to get an estimated total revenue
+df_long['SALES_REV_TURN_EST'] = df_long['RETAINED_REV_EST'] + df_long['NEW_REV_EST']
 
-# Use .replace to convert 0 values to np.nan before performing the division
-df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
-# Multiply #REVENUE_NEW_GROWTH by 100 and add it as an independent variable
-df_long['REVENUE_NEW_GROWTH_PCT'] = df_long['#REVENUE_NEW_GROWTH'] * 100
-# Compute IS_SGA_EXPENSE_PCT only when SALES_REV_TURN is valid; otherwise, assign NaN
-df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
+#Corr is one by contruction
 
 '''
-# Calculate Revenue Multiple safely by replacing 0 in SALES_REV_TURN with NaN to avoid division by zero
-df_long['REVENUE_MULTIPLE'] = (
-    (df_long['HISTORICAL_MARKET_CAP'] * df_long['BS_TOT_LIAB2'] - df_long['BS_CASH_NEAR_CASH_ITEM'])
-    / df_long['SALES_REV_TURN'].replace(0, np.nan)
-)
-'''
-
-#Calculate Retained Revenue Estimate
+#Calculate Retained & New Revenue Estimate
 df_long['RETAINED_REV_EST'] = df_long['#RRR'] * df_long['SALES_REV_TURN'].shift(1) # in million
 
 
@@ -529,7 +518,7 @@ if (df_long['NEW_REV_EST'] < 0).any():
 else:
     print("No rows with NEW_REV_EST < 0.")
 
-'''
+
 what do you do when est new rev < 0 ? ->nothing? estimation error
 # 1) Create a boolean mask for negative new revenue estimates
 mask_neg_new_rev = df_long['NEW_REV_EST'] < 0
@@ -540,30 +529,37 @@ negative_new_rev = df_long.loc[mask_neg_new_rev]
 # 3) Optionally, display only the key columns (Firm, Date, NEW_REV_EST)
 print(negative_new_rev.reset_index()[['FIRM', 'DATE', 'NEW_REV_EST']])
 400 rows
-'''
+
 
 df_long['SALES_REV_TURN_EST'] = df_long['RETAINED_REV_EST'] + df_long['NEW_REV_EST'] # in million
 
 print(f"Correlation between SALES REV TURN and the Estimated through RRR and lag is: {df_long['SALES_REV_TURN_EST'].corr(df_long['SALES_REV_TURN']):.2f}")
-# Correlation between SALES REV TURN and the Estimated through RRR and lag is: 1.0000
+# Correlation between SALES REV TURN and the Estimated through RRR and lag is: 1.0000 by definition though
+
+print(f"Correlation between #New Customer and the Estimated New Revenue is: {df_long['#NEW_CUSTOMERS'].corr(df_long['NEW_REV_EST']):.2f}")
+# Correlation between SALES REV TURN and the Estimated through RRR and lag is: 0.3
+
+BiG Problem
+
+print(f"Correlation between #Returning Customer and the Estimated Returning Revenue is: {df_long['#RETURNING_CUSTOMERS'].corr(df_long['RETAINED_REV_EST']):.2f}")
+# Correlation between SALES REV TURN and the Estimated through RRR and lag is: 0.96
+
+'''
+
+#Calculate Rest
+
+df_long['RET_EST_X_SHARE_RET'] = df_long['RETAINED_REV_EST'] * df_long['#SHARE_RET_REVENUE']
+
+# Multiply RRR and IS_SGA_EXPENSE (as % of SALES_REV_TURN) by 100
+df_long['RRR_pct'] = df_long['#RRR'] * 100
+# Create a one-period lagged version of RRR_pct for each firm
+df_long['RRR_pct_lag1'] = df_long.groupby(level='FIRM')['RRR_pct'].shift(1)
 
 
-#Calculate stock returns
-# 1) Make sure PX_LAST is numeric
-df_long['PX_LAST'] = pd.to_numeric(df_long['PX_LAST'], errors='coerce')
-
-# 2) Compute lag‐1 prices per firm
-df_long['PX_LAST_LAG1'] = (
-    df_long
-      .groupby(level='FIRM')['PX_LAST']
-      .shift(1)
-)
-
-# 3) Raw log-return (decimal)
-df_long['RETURN_LOG'] = np.log(df_long['PX_LAST'] / df_long['PX_LAST_LAG1']) # compunded return over period; time series analysis
-
-# 4) Drop the helper column
-#df_long.drop(columns='PX_LAST_LAG1', inplace=True)
+# Multiply #REVENUE_NEW_GROWTH by 100 and add it as an independent variable
+df_long['REVENUE_NEW_GROWTH_PCT'] = df_long['#REVENUE_NEW_GROWTH'] * 100
+# Compute IS_SGA_EXPENSE_PCT only when SALES_REV_TURN is valid; otherwise, assign NaN
+df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
 
 #Calculate Operating Income Profit Margin
 df_long['PM_OPER_PCT'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
@@ -578,16 +574,40 @@ df_long['REV_GROWTH_PCT'] = (np.log(df_long['SALES_REV_TURN'].replace(0, np.nan)
 df_long.drop(columns='SALES_REV_TURN_LAG1', inplace=True)
 
 
+#Calculate stock returns
+#Calculate stock returns
+#Calculate stock returns
+# 1) Make sure PX_LAST is numeric
+df_long['PX_LAST'] = pd.to_numeric(df_long['PX_LAST'], errors='coerce')
+
+# 2) Compute lag‐1 prices per firm
+df_long['PX_LAST_LAG1'] = (
+    df_long
+      .groupby(level='FIRM')['PX_LAST']
+      .shift(1)
+)
+
+# 3) Raw log-return (decimal)
+df_long['RETURN_LOG'] = np.log(df_long['PX_LAST'] / df_long['PX_LAST_LAG1']) # compunded return over period; time series analysis
 df_long['RET_ARITH']  = np.exp(df_long['RETURN_LOG']) - 1 #percentage change over period, not additive, actual percentage change
+# 4) Drop the helper column
+#df_long.drop(columns='PX_LAST_LAG1', inplace=True)
+
 
 # 2) Calculate risk-free and market premiums using log-returns
 rf_log    = df_long.xs('USBMMY3M INDEX', level='FIRM')['RETURN_LOG']
 rf_arith  = np.exp(rf_log) - 1
+
+### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
+### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
+### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
+conversion = 4 #for quartlery
+rf_quarter_pct = ((1 + rf_arith/100)**(1/conversion) - 1) * 100 #RF is annualized 
 mkt_log   = df_long.xs('SPX INDEX',    level='FIRM')['RETURN_LOG']
 mkt_arith = np.exp(mkt_log) - 1
 
 dates = df_long.index.get_level_values('DATE')
-df_long['RF']     = rf_arith.reindex(dates).values
+df_long['RF']     = rf_quarter_pct.reindex(dates).values
 df_long['MKT_RF'] = mkt_arith.reindex(dates).values - df_long['RF']
 df_long['MKT_RF'] = pd.to_numeric(df_long['MKT_RF'], errors='coerce')
 df_long['MKT_RF_LAG'] = df_long.groupby(level='FIRM')['MKT_RF'].shift(1)
@@ -688,17 +708,17 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 
 #analyze_columns(['SALES_REV_TURN', 'RETAINED_REV_EST'], firm_effect=True, time_effect=True)
 
-analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True)
+analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
 
 '''
-nochmal strategy überdenken
+new rev est is not significant check why
 '''
-#analyze_columns(['PROF_MARGIN', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+
 analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 
-analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True)
+analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True,show_plots=False)
 
-#analyze_columns(['HISTORICAL_MARKET_CAP', 'RETAINED_REV_EST', 'NEW_REV_EST', 'BS_TOT_ASSET'], firm_effect=True, time_effect=True)
 
 
 '''
