@@ -588,26 +588,26 @@ df_long['PX_LAST_LAG1'] = (
 )
 
 # 3) Raw log-return (decimal)
-df_long['RETURN_LOG'] = np.log(df_long['PX_LAST'] / df_long['PX_LAST_LAG1']) # compunded return over period; time series analysis
-df_long['RET_ARITH']  = np.exp(df_long['RETURN_LOG']) - 1 #percentage change over period, not additive, actual percentage change
+df_long['RETURN_LOG'] = np.log(df_long['PX_LAST'] / df_long['PX_LAST_LAG1']) # compunded decimal return over period; time series analysis
+df_long['RET_ARITH']  = np.exp(df_long['RETURN_LOG']) - 1 # decimal percentage change over period, not additive, actual percentage change
 # 4) Drop the helper column
 #df_long.drop(columns='PX_LAST_LAG1', inplace=True)
 
 
-# 2) Calculate risk-free and market premiums using log-returns
-rf_log    = df_long.xs('USBMMY3M INDEX', level='FIRM')['RETURN_LOG']
-rf_arith  = np.exp(rf_log) - 1
-
+# 2) Calculate risk-free 
+### make sure RF is converted into fitting period returns decimal (e.g quarterly, monthly)
 ### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
 ### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
-### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
+rf_ann_pct = df_long.xs('USBMMY3M INDEX', level='FIRM')['PX_LAST']  # annual return in percent
 conversion = 4 #for quartlery
-rf_quarter_pct = ((1 + rf_arith/100)**(1/conversion) - 1) * 100 #RF is annualized 
+rf = ((1 + rf_ann_pct/100)**(1/conversion) - 1) # risk free rate per period return decimal
+dates = df_long.index.get_level_values('DATE')
+df_long['RF']     = rf.reindex(dates).values
+
+
+# Calculate market premiums using log-returns
 mkt_log   = df_long.xs('SPX INDEX',    level='FIRM')['RETURN_LOG']
 mkt_arith = np.exp(mkt_log) - 1
-
-dates = df_long.index.get_level_values('DATE')
-df_long['RF']     = rf_quarter_pct.reindex(dates).values
 df_long['MKT_RF'] = mkt_arith.reindex(dates).values - df_long['RF']
 df_long['MKT_RF'] = pd.to_numeric(df_long['MKT_RF'], errors='coerce')
 df_long['MKT_RF_LAG'] = df_long.groupby(level='FIRM')['MKT_RF'].shift(1)
@@ -615,9 +615,11 @@ df_long['MKT_RF_LAG'] = df_long.groupby(level='FIRM')['MKT_RF'].shift(1)
 # 3) Lagged firm characteristics: SIZE, BTM and existing RRR_pct_lag1
 df_long['HISTORICAL_MARKET_CAP'] = pd.to_numeric(df_long['HISTORICAL_MARKET_CAP'], errors='coerce')
 size = np.log(df_long['HISTORICAL_MARKET_CAP'])
+df_long['SIZE'] = size
 df_long['SIZE_LAG'] = size.groupby(level='FIRM').shift(1)
 btm  = (df_long['BS_TOT_ASSET'] - df_long['BS_TOT_LIAB2']) / df_long['HISTORICAL_MARKET_CAP']
 df_long['BTM_LAG'] = btm.groupby(level='FIRM').shift(1)
+df_long['BTM'] = btm
 df_long['RRR_LAG'] = df_long['RRR_pct_lag1'] / 100
 
 # 4) Excess return calculation
@@ -671,7 +673,7 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
     # Plot histograms (optional)
     if show_plots:
         for col in columns:
-            lower = df_long[col].quantile(0.05)
+            lower = df_long[col].quantile(0.05) #winsorize for better display
             upper = df_long[col].quantile(0.95)
             data_filtered = df_long[col][(df_long[col] >= lower) & (df_long[col] <= upper)]
             plt.figure()
@@ -737,18 +739,15 @@ plt.grid(True, linestyle='--', alpha=0.5)
 plt.tight_layout()
 plt.show()
 
-'''
-Ergebnis kann nicht sein 
-analyze_columns(['REVENUE_MULTIPLE', 'RETAINED_REV_EST', 'NEW_REV_EST', 'BS_TOT_ASSET'], firm_effect=True, time_effect=True, show_plots=False)
-analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT'], firm_effect=True, time_effect=True,show_plots=False)
-'''
 
-analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG'], firm_effect=False, time_effect=False, show_plots=False)
-analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG','RRR_pct_lag1'], firm_effect=False, time_effect=False, show_plots=False)
+
+analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG'], firm_effect=False, time_effect=False, show_plots=True)
+analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG','RRR_LAG'], firm_effect=False, time_effect=False, show_plots=True)
 '''
 to predict or to explain?
 '''
-analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE_LAG', 'BTM_LAG','RRR_pct','RRR_pct_lag1'], firm_effect=False, time_effect=False, show_plots=False)
+analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR'], firm_effect=False, time_effect=False, show_plots=True)
+analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR','RRR_LAG'], firm_effect=False, time_effect=False, show_plots=True)
 
 '''
 why do I get those results?
