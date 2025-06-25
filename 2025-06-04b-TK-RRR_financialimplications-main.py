@@ -718,8 +718,24 @@ analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','REVENUE_NEW_GROWTH_PC
 analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['RETAINED_REV_EST','IS_RD_EXPEND'], firm_effect=False, time_effect=False,show_plots=True)
+plt.figure(figsize=(7, 5))
+plt.scatter(df_long['NEW_REV_EST'], df_long['IS_SGA_EXPENSE'], alpha=0.4)
+plt.xlabel('NEW_REV_EST')
+plt.ylabel('IS_SGA_EXPENSE')
+plt.title('Scatterplot: IS_SGA_EXPENSE vs. NEW_REV_EST')
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
 
-
+plt.figure(figsize=(7, 5))
+plt.scatter(df_long['RETAINED_REV_EST'], df_long['IS_SGA_EXPENSE'], alpha=0.4)
+plt.xlabel('NEW_REV_EST')
+plt.ylabel('IS_SGA_EXPENSE')
+plt.title('Scatterplot: IS_SGA_EXPENSE vs. NEW_REV_EST')
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
 
 '''
 Ergebnis kann nicht sein 
