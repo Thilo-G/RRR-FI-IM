@@ -550,13 +550,11 @@ print(f"Correlation between #Returning Customer and the Estimated Returning Reve
 
 df_long['RET_EST_X_SHARE_RET'] = df_long['RETAINED_REV_EST'] * df_long['#SHARE_RET_REVENUE']
 
-# Multiply RRR and IS_SGA_EXPENSE (as % of SALES_REV_TURN) by 100
+# Multiply by 100
 df_long['RRR_pct'] = df_long['#RRR'] * 100
 # Create a one-period lagged version of RRR_pct for each firm
 df_long['RRR_pct_lag1'] = df_long.groupby(level='FIRM')['RRR_pct'].shift(1)
 
-
-# Multiply #REVENUE_NEW_GROWTH by 100 and add it as an independent variable
 df_long['REVENUE_NEW_GROWTH_PCT'] = df_long['#REVENUE_NEW_GROWTH'] * 100
 # Compute IS_SGA_EXPENSE_PCT only when SALES_REV_TURN is valid; otherwise, assign NaN
 df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
@@ -708,8 +706,6 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 ### Regression
 ### Regression
 
-#analyze_columns(['SALES_REV_TURN', 'RETAINED_REV_EST'], firm_effect=True, time_effect=True)
-
 analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
 
 '''
@@ -720,6 +716,7 @@ analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','REVENUE_NEW_GROWTH_PC
 analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True,show_plots=False)
+
 analyze_columns(['RETAINED_REV_EST','IS_RD_EXPEND'], firm_effect=False, time_effect=False,show_plots=True)
 plt.figure(figsize=(7, 5))
 plt.scatter(df_long['NEW_REV_EST'], df_long['IS_SGA_EXPENSE'], alpha=0.4)
@@ -740,14 +737,15 @@ plt.tight_layout()
 plt.show()
 
 
-
-analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG'], firm_effect=False, time_effect=False, show_plots=True)
-analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG','RRR_LAG'], firm_effect=False, time_effect=False, show_plots=True)
+#predict
+analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG'], firm_effect=False, time_effect=False, show_plots=False)
+analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG','RRR_LAG'], firm_effect=False, time_effect=False, show_plots=False)
 '''
 to predict or to explain?
 '''
+#explain
 analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR'], firm_effect=False, time_effect=False, show_plots=True)
-analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR','RRR_LAG'], firm_effect=False, time_effect=False, show_plots=True)
+analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR','RRR_LAG'], firm_effect=False, time_effect=False, show_plots=False)
 
 '''
 why do I get those results?
@@ -834,13 +832,13 @@ def quartile_cumulative_returns(
 
     # 5) Cumulative log‐sum then exponentiate → cumulative return factor
     log_cum = mean_returns.cumsum()
-    cum_returns = np.exp(log_cum)
+    cum_returns = np.exp(log_cum) -1
 
     # 6) Prepend a “start” row of 1.0 at one quarter before the first real date
     first_date = cum_returns.index.min()
     prior_date = first_date - pd.DateOffset(months=3)
     start_row = pd.DataFrame(
-        {col: 1.0 for col in cum_returns.columns},
+        {col: 0.0 for col in cum_returns.columns},
         index=[prior_date]
     )
     cum_with_start = pd.concat([start_row, cum_returns]).sort_index()
@@ -849,9 +847,9 @@ def quartile_cumulative_returns(
     plt.figure(figsize=(10, 6))
     for col in ['Q1','Q2','Q3','Q4','SPX']:
         plt.plot(cum_with_start.index, cum_with_start[col], label=col)
-    plt.title('Cumulative Returns: Q1–Q4 Portfolios vs SPX Index (Start = $1)')
+    plt.title('Cumulative Returns: Q1–Q4 Portfolios vs SPX Index')
     plt.xlabel('Date')
-    plt.ylabel('Cumulative Return (Starting at 1)')
+    plt.ylabel('Cumulative Return')
     plt.legend(title='Series', loc='upper left')
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.xticks(rotation=45)
