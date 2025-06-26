@@ -13,9 +13,8 @@ import openpyxl
 import numpy as np
 
 ###To DO
-# rerun regressions with ALTD Revenue
-# correct risk free rate to quarterly return
 # add portfolio descriptions
+# add F&F portfolio analysis
 # maybe change code sections merging before data analysis, as when merging I discovered that I need to drop a firm -> backwards now
 
 # Importing the data files
@@ -757,6 +756,10 @@ why do I get those results?
 # 6. Portfolio Analysis
 #==============================================================================
 
+
+###creating portfolios
+###creating portfolios
+###creating portfolios
 def quartile_cumulative_returns(
     df_long: pd.DataFrame,
     weight_by_mcap: bool = True
@@ -863,3 +866,103 @@ def quartile_cumulative_returns(
 # Value‐weighted by market cap:
 cum_vw = quartile_cumulative_returns(df_long, weight_by_mcap=True)
 cum_vw.head()
+
+###analyzing portfolios with performance metrics
+###analyzing portfolios with performance metrics
+###analyzing portfolios with performance metrics
+
+import statsmodels.api as sm
+from scipy.stats import skew, kurtosis
+
+def portfolio_performance_table(port_ret, benchmark_col='SPX'):
+    measures = [
+        'Geometric Mean Return', 'Downside Deviation', 'Max Drawdown',
+        'Sortino Ratio', 'Skewness', 'Kurtosis', 'Alpha', 'Beta',
+        'VaR 5%', 'Hit Ratio'
+    ]
+    portfolios = list(port_ret.columns)
+    perf = pd.DataFrame(index=measures, columns=portfolios)
+    
+    for col in portfolios:
+        returns = port_ret[col].dropna()
+        benchmark = port_ret[benchmark_col].reindex(returns.index).dropna()
+        returns = returns.loc[benchmark.index]  # align
+
+        # Geometric mean
+        geo_mean = np.exp(np.log1p(returns).mean()) - 1 #np.log1p(x) is equivalent to np.log(1 + x) offering improved numerical stability for small values
+
+        # Downside deviation (negative returns only)
+        downside = returns[returns < 0]
+        dd = downside.std(ddof=0)  # population std for downside
+
+        # Max drawdown
+        cum = (1 + returns).cumprod()
+        cum_max = cum.cummax() #Return a df or series of the same size containing cumulative maximum 
+        drawdown = (cum / cum_max - 1).min()
+
+        # Sortino ratio
+        sortino = returns.mean() / dd if dd > 0 else np.nan
+
+        # Skewness and kurtosis
+        skewness = skew(returns, nan_policy='omit')
+        kurt = kurtosis(returns, nan_policy='omit', fisher=False)  # "normal" = 3
+
+        # Alpha and Beta (CAPM regression vs. SPX)
+        X = sm.add_constant(benchmark)
+        reg = sm.OLS(returns, X).fit()
+        alpha = reg.params['const']
+        beta = reg.params[benchmark_col]
+
+        # 5% Value at Risk (VaR, historical)
+        var5 = np.percentile(returns, 5)
+
+        # Hit ratio (fraction positive returns)
+        hit = (returns > 0).mean()
+
+        perf.at['Geometric Mean Return', col] = geo_mean
+        perf.at['Downside Deviation', col] = dd
+        perf.at['Max Drawdown', col] = drawdown
+        perf.at['Sortino Ratio', col] = sortino
+        perf.at['Skewness', col] = skewness
+        perf.at['Kurtosis', col] = kurt
+        perf.at['Alpha', col] = alpha
+        perf.at['Beta', col] = beta
+        perf.at['VaR 5%', col] = var5
+        perf.at['Hit Ratio', col] = hit
+
+    return perf
+
+# Example usage:
+# perf_table = portfolio_performance_table(port_ret)
+# print(perf_table)
+
+port_ret = cum_vw.diff().dropna()  # Each column: Q1, Q2, Q3, Q4, SPX
+perf_table = portfolio_performance_table(port_ret)
+perf_table = perf_table.map(
+    lambda x: f"{x:.4f}" if isinstance(x, (float, np.floating)) else x
+)
+print(perf_table)
+
+###analyzing portfolios with F&F
+###analyzing portfolios with F&F
+###analyzing portfolios with F&F
+
+
+# factors are available monthly or annually
+# use monthly factors 
+# how? 
+# two ways: first (easy way): decompount quarterly returns to monthly returns and then merge it with the monthly factors
+# second way: get monthly return data and somehow merge it with the RRR quantile data and the factors
+
+# second way
+# align portfolio time series returns to the factor dates
+# merge your returns with the factor series on the monthly data 
+# run the regression: portfolioreturn -RF = alpha + beta1 * MKT_RF + beta2 * SMB + beta3 * HML
+
+# factors are available at https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
+# Download the Fama-French factors data (e.g., 5 factors) and save it as a CSV file
+
+
+
+
+#==============================================================================
