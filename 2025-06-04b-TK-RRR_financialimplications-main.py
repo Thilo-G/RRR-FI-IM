@@ -866,6 +866,12 @@ def quartile_cumulative_returns(
 # Value‐weighted by market cap:
 cum_vw = quartile_cumulative_returns(df_long, weight_by_mcap=True)
 cum_vw.head()
+# equally weighted:
+'''
+change to equally weighted S&P index
+'''
+cum_eq = quartile_cumulative_returns(df_long, weight_by_mcap=False)
+cum_eq.head()
 
 ###analyzing portfolios with performance metrics
 ###analyzing portfolios with performance metrics
@@ -932,9 +938,6 @@ def portfolio_performance_table(port_ret, benchmark_col='SPX'):
 
     return perf
 
-# Example usage:
-# perf_table = portfolio_performance_table(port_ret)
-# print(perf_table)
 
 port_ret = cum_vw.diff().dropna()  # Each column: Q1, Q2, Q3, Q4, SPX
 perf_table = portfolio_performance_table(port_ret)
@@ -942,6 +945,17 @@ perf_table = perf_table.map(
     lambda x: f"{x:.4f}" if isinstance(x, (float, np.floating)) else x
 )
 print(perf_table)
+
+'''
+change to equally weighted SPX index
+'''
+port_ret_eq = cum_eq.diff().dropna()  # Each column: Q1, Q2, Q3, Q4, SPX
+perf_table_eq = portfolio_performance_table(port_ret_eq)
+perf_table_eq = perf_table_eq.map(  
+    lambda x: f"{x:.4f}" if isinstance(x, (float, np.floating)) else x
+)   
+print(perf_table_eq)
+
 
 ###analyzing portfolios with F&F
 ###analyzing portfolios with F&F
@@ -959,10 +973,73 @@ print(perf_table)
 # merge your returns with the factor series on the monthly data 
 # run the regression: portfolioreturn -RF = alpha + beta1 * MKT_RF + beta2 * SMB + beta3 * HML
 
+
+
 # factors are available at https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
 # Download the Fama-French factors data (e.g., 5 factors) and save it as a CSV file
 
+# Header is on line 5 (row 4), data starts on line 6 (row 5)
+file3_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-06-27-FF_Factors.csv"
+#manually delete annual factors after the monthly factors
+try:
+    # Read the fundamentals file
+    ff_factors = pd.read_csv(file3_path, skiprows=3)
+    #ff_factors = pd.read_csv(file3_path, skiprows=4,index_col=0)
+    print("Fama and French Fundamentals-Daten erfolgreich eingelesen.")
+    print("Shape:", ff_factors.shape)
+
+except Exception as e:
+    #Exception is the base class for all exceptions (FilenotFoundError, ValueError, etc.)
+    #As e saves the "exception"
+    print(f"Fehler beim Einlesen der Dateien: {e}")
+ff_factors.head()
+# Rename 'Unnamed: 0' to 'Date' for clarity
+ff_factors = ff_factors.rename(columns={'Unnamed: 0': 'Date'})
+
+# Convert date to datetime (YYYYMM format)
+ff_factors['Date'] = pd.to_datetime(ff_factors['Date'].astype(str), format='%Y%m')
+# Set as index and sort
+ff_factors = ff_factors.set_index('Date').sort_index()
+for col in ['Mkt-RF', 'SMB', 'HML', 'RF']:
+    ff_factors[col] = ff_factors[col] / 100
+ff_factors.head()
 
 
+
+#way two: interpolate quarterly returns to monthly returns
+quarter_rets = cum_vw.diff().dropna()
+# Let's assume the index of quarter_rets is quarterly, e.g., 2020-03-31, 2020-06-30, etc.
+monthly_rets = []
+monthly_dates = []
+
+for date, row in quarter_rets.iterrows():
+    r_q = row.values
+    r_m = (1 + r_q) ** (1/3) - 1  # Decompound
+    # Add three months for each quarter
+    for i in range(3):
+        month_date = (pd.to_datetime(date) - pd.offsets.MonthEnd(0)) + pd.DateOffset(months=i-2)
+        monthly_rets.append(r_m)
+        monthly_dates.append(month_date)
+
+monthly_df = pd.DataFrame(monthly_rets, columns=quarter_rets.columns, index=pd.to_datetime(monthly_dates))
+monthly_df = monthly_df.sort_index()
+monthly_df.head()
+
+# Set both to month-end frequency for perfect alignment
+monthly_df.index = monthly_df.index.to_period('M').to_timestamp('M')
+ff_factors.index = ff_factors.index.to_period('M').to_timestamp('M')
+combined = monthly_df.join(ff_factors, how='inner')
+combined.head()
+
+portfolios = [col for col in monthly_df.columns if col != 'SPX']
+
+for p in portfolios:
+    # Excess returns: subtract risk-free rate (ensure both in percent or decimal!)
+    y = combined[p] - combined['RF'] / 100   # if RF is in percent and your returns are decimal
+    X = combined[['Mkt-RF', 'SMB', 'HML']] / 100  # if these are in percent
+    X = sm.add_constant(X)
+    model = sm.OLS(y, X).fit()
+    print(f'\nFama-French regression for {p}:')
+    print(model.summary())
 
 #==============================================================================
