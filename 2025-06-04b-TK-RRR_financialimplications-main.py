@@ -14,14 +14,13 @@ import numpy as np
 
 ###To DO
 # add portfolio descriptions
-# add F&F portfolio analysis
 # maybe change code sections merging before data analysis, as when merging I discovered that I need to drop a firm -> backwards now
 
 # Importing the data files
 # Firm Funamentals
-file1_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-0319a-TK-fundamentals-python.xlsx"
+file1_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-0319a-TK-fundamentals_Python.xlsx"
 # Quarterly Revenue
-file2_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-0319a-TK-quarterlyrevenue-collection.xlsx"
+file2_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-0319a-TK-quarterlyrevenue-collection_Python.xlsx"
 
 try:
     # Read the fundamentals file
@@ -410,6 +409,64 @@ Triggered by one period where its?
 filter outliner out?
 """
 
+
+###Revenue stavility analysis
+###Revenue stavility analysis
+###Revenue stavility analysis
+
+#calculate the sum of negative growth rates for each firm in a new dataframe
+# Create a new DataFrame to store results
+firm_stats = []
+
+# Extract firm names from df_revenue columns (before the dot)
+firm_names = set([col.split('.')[0] for col in df_revenue.columns if '.#RRR' in col])
+
+for firm in firm_names:
+    # Column names for this firm
+    rrr_col = f"{firm}.#RRR"
+    growth_col = f"{firm}.#Revenue_Growth"
+    # Check if both columns exist
+    if rrr_col in df_revenue.columns and growth_col in df_revenue.columns:
+        growth_rates = pd.to_numeric(df_revenue[growth_col], errors='coerce')
+        rrr_values = pd.to_numeric(df_revenue[rrr_col], errors='coerce')
+        sum_neg_growth = growth_rates[growth_rates < 0].sum(skipna=True)
+        mean_rrr = rrr_values.mean(skipna=True)
+        firm_stats.append({'Firm': firm, 'Sum_Neg_Growth': sum_neg_growth, 'Mean_RRR': mean_rrr})
+
+# Convert to DataFrame
+df_firm_stats = pd.DataFrame(firm_stats)
+
+# Drop rows with missing values
+df_firm_stats = df_firm_stats.dropna(subset=['Sum_Neg_Growth', 'Mean_RRR'])
+
+# Regression: Sum_Neg_Growth ~ Mean_RRR
+import statsmodels.api as sm
+X = sm.add_constant(df_firm_stats['Mean_RRR'])
+y = df_firm_stats['Sum_Neg_Growth']
+model = sm.OLS(y, X).fit()
+print(model.summary())
+
+# Histogram of Sum_Neg_Growth
+plt.figure(figsize=(8, 4))
+plt.hist(df_firm_stats['Sum_Neg_Growth'], bins=20, color='skyblue', edgecolor='black')
+plt.title('Histogram of Sum of Negative Growth Rates per Firm')
+plt.xlabel('Sum of Negative Growth Rates')
+plt.ylabel('Number of Firms')
+plt.grid(axis='y', linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.show()
+
+# Histogram of Mean_RRR
+plt.figure(figsize=(8, 4))
+plt.hist(df_firm_stats['Mean_RRR'], bins=20, color='salmon', edgecolor='black')
+plt.title('Histogram of Mean RRR per Firm')
+plt.xlabel('Mean RRR')
+plt.ylabel('Number of Firms')
+plt.grid(axis='y', linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.show()
+
+
 #==============================================================================
 # 4. Merging the Data
 #==============================================================================
@@ -715,6 +772,10 @@ analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','REVENUE_NEW_GROWTH_PC
 analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G'], firm_effect=True, time_effect=True,show_plots=True)
+analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=False, time_effect=False,show_plots=False)
+
 
 analyze_columns(['RETAINED_REV_EST','IS_RD_EXPEND'], firm_effect=False, time_effect=False,show_plots=True)
 plt.figure(figsize=(7, 5))
@@ -752,6 +813,339 @@ why do I get those results?
 '''
 
 
+#==============================================================================
+# 6. Portfolio Analysis
+#==============================================================================
+
+'''
+neu anfang
+'''
+file3_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-07-02a-TK-Monthly-Returns_Python.xlsx"
+try:
+    # Read the fundamentals file
+    monthly_returns = pd.read_excel(file3_path, header=None)
+    print("Monthly Return data sucessfully read in")
+    print("Shape:", monthly_returns.shape)
+
+except Exception as e:
+    #Exception is the base class for all exceptions (FilenotFoundError, ValueError, etc.)
+    #As e saves the "exception"
+    print(f"Fehler beim Einlesen der Dateien: {e}")
+
+# Step 1: Process Headers
+header_rows_monthly = monthly_returns.iloc[:2];  # First two rows as headers
+data_rows_monthly = monthly_returns.iloc[2:];  # Remaining rows are data
+
+
+# Combine headers: "Firm.Variable"
+combined_headers_monthly = header_rows_monthly.apply(lambda x: x.astype(str).str.strip(), axis=0);
+column_headers_monthly = combined_headers_monthly.apply(lambda x: '.'.join(x.dropna()), axis=0);
+data_rows_monthly.columns = column_headers_monthly;  # Assign proper headers to the data rows
+df_monthly_returns = data_rows_monthly.reset_index(drop=True);  # Reset index with proper columns
+
+
+# Rename the first column to "Date"
+data_rows_monthly.rename(columns={data_rows_monthly.columns[0]: 'Date'}, inplace=True);
+
+# Reset the index for the data rows
+df_monthly_returns = data_rows_monthly.reset_index(drop=True);
+df_monthly_returns.head()
+df_monthly_returns['Date'] = pd.to_datetime(df_monthly_returns['Date'], errors='coerce')  # Convert 'Date' to datetime
+df_monthly_returns.head()
+
+# Step 2: Handle Missing Data
+df_monthly_returns.replace('#N/A N/A', np.nan, inplace=True)
+
+
+#reshape wide to long format
+
+df_prices = df_monthly_returns.copy()
+
+# Make sure all columns except 'Date' are numeric
+for col in df_prices.columns:
+    if col != 'Date':
+        df_prices[col] = pd.to_numeric(df_prices[col], errors='coerce')
+
+# Ensure Date is datetime
+df_prices['Date'] = pd.to_datetime(df_prices['Date'], format='%d/%m/%Y')
+
+# Calculate log returns (excluding 'Date')
+px_only = df_prices.drop(columns=['Date'])
+returns_px = np.log(px_only / px_only.shift(1))
+
+# Add Date column back in
+returns_px['Date'] = df_prices['Date'].values
+
+# Melt to long format
+returns = returns_px.melt(id_vars='Date', var_name='FirmVar', value_name='RETURN_LOG')
+returns = returns.dropna(subset=['RETURN_LOG'])
+returns['FIRM'] = returns['FirmVar'].str.replace('.PX_LAST', '', regex=False)
+returns = returns.drop(columns=['FirmVar'])
+
+print(returns.head())
+
+# Assign each month to its quarter end
+returns['QUARTER'] = returns['Date'].dt.to_period('Q').dt.to_timestamp('Q', 'end')
+
+
+# Prepare the quarterly RRR data
+df_quarterly = (
+    df_long.reset_index()[['FIRM', 'DATE', 'RRR_LAG', 'HISTORICAL_MARKET_CAP']]
+    .copy()
+)
+df_quarterly['DATE'] = pd.to_datetime(df_quarterly['DATE'])
+# Snap to quarter-end (in case it's not)
+df_quarterly['QUARTER'] = df_quarterly['DATE'].dt.to_period('Q').dt.to_timestamp('Q', 'end')
+
+#Step 3: Merge Quarterly RRR Signal onto Monthly Returns
+
+
+
+
+
+#Prepare the Quarterly RRR Data
+# For monthly returns:
+returns['FIRM'] = returns['FIRM'].str.upper()
+# Get set of firms from both sources
+firms_monthly = set(returns['FIRM'].unique())
+firms_quarterly = set(df_long.reset_index()['FIRM'].unique())
+
+# Firms in monthly but not in quarterly
+missing_in_quarterly = firms_monthly - firms_quarterly
+print(f"Firms in monthly data but not in quarterly data: {missing_in_quarterly}")
+
+# Firms in quarterly but not in monthly
+missing_in_monthly = firms_quarterly - firms_monthly
+print(f"Firms in quarterly data but not in monthly data: {missing_in_monthly}")
+
+# Intersection (firms present in both)
+common_firms = firms_monthly & firms_quarterly
+print(f"Number of common firms: {len(common_firms)}")
+
+returns = returns.merge(
+    df_quarterly[['FIRM', 'QUARTER', 'RRR_LAG', 'HISTORICAL_MARKET_CAP']],
+    on=['FIRM', 'QUARTER'],
+    how='left'
+)
+
+
+#Assign RRR quartiles by quarter
+returns['RRR_LAG'] = pd.to_numeric(returns['RRR_LAG'], errors='coerce')
+
+def safe_qcut(x):
+    x = x.dropna()
+    if x.nunique() < 4:
+        return pd.Series([np.nan]*len(x), index=x.index)
+    return pd.qcut(x, 4, labels=['Q1','Q2','Q3','Q4'])
+
+returns['quartile'] = (
+    returns.groupby('QUARTER')['RRR_LAG']
+    .transform(safe_qcut)
+)
+#first quarter has no RRR_LAG, so quartile is NaN
+#Use safe_qcut to handle cases with fewer than 4 unique values
+
+
+### Build the portfolios
+def calc_and_plot_portfolio_returns_from_long(
+    returns,
+    weight_type='value',
+    benchmarks=['SPX INDEX', 'SPW INDEX']
+):
+    """
+    Calculate and plot monthly portfolio returns by quartile, plus included benchmarks from returns DataFrame.
+    Args:
+        returns: DataFrame with columns ['Date', 'quartile', 'RETURN_LOG', 'FIRM', 'HISTORICAL_MARKET_CAP']
+        weight_type: 'equal' or 'value' (default 'value')
+        benchmarks: list of FIRM names to use as benchmarks (must exist in returns['FIRM'])
+    Returns:
+        port_rets: DataFrame of monthly log returns (portfolios + benchmarks)
+        cum_returns: DataFrame of cumulative returns
+    """
+    # Portfolio log returns
+    if weight_type == 'equal':
+        port_rets = (
+            returns.groupby(['Date', 'quartile'])['RETURN_LOG']
+            .mean()
+            .unstack('quartile')
+            .sort_index()
+        )
+    else:  # value-weighted
+        returns['MCAP'] = pd.to_numeric(returns['HISTORICAL_MARKET_CAP'], errors='coerce')
+        returns['MCAP_SUM'] = returns.groupby(['Date', 'quartile'])['MCAP'].transform('sum')
+        returns['w'] = returns['MCAP'] / returns['MCAP_SUM']
+        returns['w_return'] = returns['w'] * returns['RETURN_LOG']
+        port_rets = (
+            returns.groupby(['Date', 'quartile'])['w_return']
+            .sum()
+            .unstack('quartile')
+            .sort_index()
+        )
+
+    # Add benchmarks (from returns, not price)
+    for bmk in benchmarks:
+        if bmk in returns['FIRM'].unique():
+            # Group by Date, mean in case there are duplicates (shouldn't be)
+            ser = (
+                returns[returns['FIRM'] == bmk]
+                .groupby('Date')['RETURN_LOG']
+                .mean()
+                .reindex(port_rets.index)
+            )
+            port_rets[bmk.split()[0]] = ser.values
+
+    # Cumulative returns (start at 0)
+    cum_returns = np.exp(port_rets.cumsum()) - 1
+    # Prepend a zero for plotting
+    first_date = cum_returns.index.min()
+    prior_date = first_date - pd.offsets.MonthEnd(1)
+    start_row = pd.DataFrame({c: 0.0 for c in cum_returns.columns}, index=[prior_date])
+    cum_returns = pd.concat([start_row, cum_returns]).sort_index()
+
+    # Plot
+    plt.figure(figsize=(12, 6))
+    for col in cum_returns.columns:
+        plt.plot(cum_returns.index, cum_returns[col], label=col)
+    plt.title(f'Cumulative Returns by RRR Quartile Portfolio ({weight_type.capitalize()}-Weighted)')
+    plt.xlabel('Date')
+    plt.ylabel('Cumulative Return (Start = 0)')
+    plt.legend(title='Portfolio', loc='upper left')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.show()
+
+    return port_rets, cum_returns
+
+
+port_rets_vw, cum_returns_vw = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='value', benchmarks=['SPX INDEX']
+)
+
+port_rets_eq, cum_returns_eq = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='equal', benchmarks=['SPW INDEX']
+)
+
+
+import statsmodels.api as sm
+from scipy.stats import skew, kurtosis
+def portfolio_performance_table(port_ret, benchmark_col='SPX INDEX'):
+    measures = [
+        'Geometric Mean Return', 'Downside Deviation', 'Max Drawdown',
+        'Sortino Ratio', 'Skewness', 'Kurtosis', 'Alpha', 'Beta',
+        'VaR 5%', 'Hit Ratio'
+    ]
+    portfolios = list(port_ret.columns)
+    perf = pd.DataFrame(index=measures, columns=portfolios)
+
+    for col in portfolios:
+        returns = port_ret[col].dropna()
+        if benchmark_col in port_ret.columns:
+            benchmark = port_ret[benchmark_col].reindex(returns.index).dropna()
+            returns = returns.loc[benchmark.index]  # align
+        else:
+            benchmark = None
+
+        # Geometric mean (for log returns, convert to gross return first)
+        geo_mean = np.exp(returns.mean()) - 1
+
+        # Downside deviation (negative returns only)
+        downside = returns[returns < 0]
+        dd = downside.std(ddof=0)  # population std for downside
+
+        # Max drawdown (for log returns: use exp(cumsum()))
+        cum = np.exp(returns.cumsum())
+        cum_max = cum.cummax()
+        drawdown = (cum / cum_max - 1).min()
+
+        # Sortino ratio
+        sortino = returns.mean() / dd if dd > 0 else np.nan
+
+        # Skewness and kurtosis
+        skewness = skew(returns, nan_policy='omit')
+        kurt = kurtosis(returns, nan_policy='omit', fisher=False)
+
+
+        for col in portfolios:
+            returns = port_ret[col].dropna()
+            benchmark = port_ret['SPX INDEX'].reindex(returns.index).dropna()
+            aligned = pd.concat([returns, benchmark], axis=1).dropna()
+            print(f"{col}: {len(aligned)} aligned months")
+
+        # Alpha and Beta (CAPM regression vs. benchmark)
+        if benchmark is not None and not benchmark.isnull().all():
+            X = sm.add_constant(benchmark)
+            reg = sm.OLS(returns, X).fit()
+            alpha = reg.params['const']
+            beta = reg.params[benchmark_col]
+        else:
+            alpha, beta = np.nan, np.nan
+
+        # 5% Value at Risk (VaR, historical)
+        var5 = np.percentile(returns, 5)
+
+        # Hit ratio (fraction positive returns)
+        hit = (returns > 0).mean()
+
+        perf.at['Geometric Mean Return', col] = geo_mean
+        perf.at['Downside Deviation', col] = dd
+        perf.at['Max Drawdown', col] = drawdown
+        perf.at['Sortino Ratio', col] = sortino
+        perf.at['Skewness', col] = skewness
+        perf.at['Kurtosis', col] = kurt
+        perf.at['Alpha', col] = alpha
+        perf.at['Beta', col] = beta
+        perf.at['VaR 5%', col] = var5
+        perf.at['Hit Ratio', col] = hit
+
+    return perf
+
+perf_table_vw = portfolio_performance_table(port_rets_vw, benchmark_col='SPX INDEX')
+perf_table_vw = perf_table_vw.map(lambda x: f"{x:.4f}" if isinstance(x, (float, np.floating)) else x)
+print(perf_table_vw)
+
+# For equal-weighted:
+perf_table_ew = portfolio_performance_table(port_rets_eq, benchmark_col='SPW INDEX')
+perf_table_ew = perf_table_ew.map(lambda x: f"{x:.4f}" if isinstance(x, (float, np.floating)) else x)
+print(perf_table_ew)
+
+
+
+file4_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-06-27-FF-Factors_Monthly_Python.csv"
+
+# Read Fama-French monthly factors, skipping metadata
+ff_factors = pd.read_csv(file4_path, skiprows=3)
+ff_factors = ff_factors.rename(columns={'Unnamed: 0': 'Date'})
+ff_factors['Date'] = pd.to_datetime(ff_factors['Date'].astype(str), format='%Y%m')
+ff_factors = ff_factors.set_index('Date').sort_index()
+for col in ['Mkt-RF', 'SMB', 'HML', 'RF']:
+    ff_factors[col] = ff_factors[col] / 100
+
+# Align index to month end if needed
+ff_factors.index = ff_factors.index.to_period('M').to_timestamp('M')
+
+# Make sure both DataFrames have the same index frequency/type
+port_rets_vw.index = port_rets_vw.index.to_period('M').to_timestamp('M')
+combined = port_rets_vw.join(ff_factors, how='inner')
+combined.head()
+
+import statsmodels.api as sm
+
+# Choose which portfolios to analyze (exclude SPX/SPW if you want)
+portfolios = [col for col in port_rets.columns if col not in ['SPX', 'SPW']]
+
+for p in portfolios:
+    # Excess returns (portfolio minus risk-free)
+    y = combined[p] - combined['RF']
+    # Explanatory variables (factors)
+    X = combined[['Mkt-RF', 'SMB', 'HML']]
+    X = sm.add_constant(X)
+    model = sm.OLS(y, X).fit()
+    print(f'\nFama-French regression for {p}:')
+    print(model.summary())
+
+'''
+neu ende
+'''
 #==============================================================================
 # 6. Portfolio Analysis
 #==============================================================================
@@ -957,6 +1351,9 @@ perf_table_eq = perf_table_eq.map(
 print(perf_table_eq)
 
 
+
+
+
 ###analyzing portfolios with F&F
 ###analyzing portfolios with F&F
 ###analyzing portfolios with F&F
@@ -964,26 +1361,21 @@ print(perf_table_eq)
 
 # factors are available monthly or annually
 # use monthly factors 
-# how? 
-# two ways: first (easy way): decompount quarterly returns to monthly returns and then merge it with the monthly factors
-# second way: get monthly return data and somehow merge it with the RRR quantile data and the factors
-
-# second way
 # align portfolio time series returns to the factor dates
 # merge your returns with the factor series on the monthly data 
 # run the regression: portfolioreturn -RF = alpha + beta1 * MKT_RF + beta2 * SMB + beta3 * HML
-
-
 
 # factors are available at https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
 # Download the Fama-French factors data (e.g., 5 factors) and save it as a CSV file
 
 # Header is on line 5 (row 4), data starts on line 6 (row 5)
-file3_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-06-27-FF_Factors.csv"
+file4_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-06-27-FF_Factors.csv"
+
 #manually delete annual factors after the monthly factors
 try:
     # Read the fundamentals file
-    ff_factors = pd.read_csv(file3_path, skiprows=3)
+    ff_factors = pd.read_csv(file4_path, skiprows=3)
+    monthly_returns = pd.read_excel(file4_path, sheet_name='Monthly Returns')
     #ff_factors = pd.read_csv(file3_path, skiprows=4,index_col=0)
     print("Fama and French Fundamentals-Daten erfolgreich eingelesen.")
     print("Shape:", ff_factors.shape)
