@@ -94,11 +94,13 @@ df_revenue = data_rows_rev.reset_index(drop=True);
 ### replace empty cells with NaN
 df_revenue = df_revenue.replace(r'^\s*$', pd.NA, regex=True);
 
-#DROP CART US EQUITY columns
+'''
+ROP CART US EQUITY columns
 df_revenue = df_revenue.loc[
     :, 
     ~df_revenue.columns.str.contains('CART US EQUITY', case=False)
 ]
+'''
 
 #Add totel and RRR and shares
 # Remove duplicate columns
@@ -409,6 +411,72 @@ Triggered by one period where its?
 filter outliner out?
 """
 
+'''
+Forecasting revenue growth based on RRR quartiles
+bin_labels = ["Q1 (Lowest 25%)", "Q2", "Q3", "Q4 (Highest 25%)"]
+bin_avg_growth_list = []
+
+# First, ensure your data is sorted by date
+dates = sorted(df_revenue["Date"].unique())
+
+# Iterate from the second period onward (so t-1 exists)
+for i in range(1, len(dates)):
+    date_t = dates[i]
+    date_t_minus_1 = dates[i-1]
+
+    group_t = df_revenue[df_revenue["Date"] == date_t]
+    group_t_minus_1 = df_revenue[df_revenue["Date"] == date_t_minus_1]
+
+    firm_rrr_lag = {}
+    firm_growth = {}
+
+    for company in company_names:
+        rrr_col = f"{company}.#RRR"
+        growth_col = f"{company}.#Revenue_Growth"
+
+        if (rrr_col in group_t_minus_1.columns) and (growth_col in group_t.columns):
+            # Lagged RRR from t-1
+            rrr_value = group_t_minus_1[rrr_col].values[0]
+            growth_value = group_t[growth_col].values[0]
+            if not pd.isna(rrr_value) and not pd.isna(growth_value):
+                firm_rrr_lag[company] = rrr_value
+                firm_growth[company] = growth_value
+
+    if len(firm_rrr_lag) < 4:
+        print(f"Skipping Date {date_t}: Not enough firms for quartile binning.")
+        continue
+
+    # Build DataFrame with lagged RRR and next-period growth
+    df_firms = pd.DataFrame({
+        "Company": list(firm_rrr_lag.keys()),
+        "RRR_Lag": list(firm_rrr_lag.values()),
+        "Growth": [firm_growth[c] for c in firm_rrr_lag.keys()]
+    })
+
+    try:
+        df_firms["RRR_Quartile"] = pd.qcut(df_firms["RRR_Lag"], q=4, labels=bin_labels)
+    except ValueError:
+        print(f"Skipping Date {date_t}: Unable to compute quartiles due to identical values.")
+        continue
+
+    avg_growth_per_bin = df_firms.groupby("RRR_Quartile", observed=True)["Growth"].mean()
+    avg_growth_per_bin["Date"] = date_t
+    bin_avg_growth_list.append(avg_growth_per_bin)
+
+# Convert list to DataFrame
+df_bin_avg_growth = pd.DataFrame(bin_avg_growth_list)
+
+# Compute the final average growth rate per bin across all periods
+final_avg_growth_per_bin = df_bin_avg_growth.drop(columns="Date", errors="ignore").mean()
+print(final_avg_growth_per_bin)
+
+RRR_Quartile
+Q1 (Lowest 25%)     0.245503
+Q2                  0.086181
+Q3                  0.068035
+Q4 (Highest 25%)    0.021027
+
+'''
 
 ###Revenue stavility analysis
 ###Revenue stavility analysis
@@ -418,7 +486,7 @@ filter outliner out?
 # Create a new DataFrame to store results
 firm_stats = []
 
-# Extract firm names from df_revenue columns (before the dot)
+# Extract firm names from df_revenue columns (befmore the dot)
 firm_names = set([col.split('.')[0] for col in df_revenue.columns if '.#RRR' in col])
 
 for firm in firm_names:
@@ -617,6 +685,7 @@ df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_
 
 #Calculate Operating Income Profit Margin
 df_long['PM_OPER_PCT'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
+df_long['PM_OPER'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) 
 
 # Calculate Revenue Growth as percentage change of SALES_REV_TURN from previous period for each firm
 df_long['SALES_REV_TURN_LAG1'] = (
@@ -761,6 +830,43 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 ### Regression
 ### Regression
 ### Regression
+
+
+
+
+analyze_columns(['IS_OPER_INC', 'SALES_REV_TURN_EST'], firm_effect=False, time_effect=False,show_plots=True)
+
+analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=False, time_effect=False,show_plots=True)
+
+analyze_columns(['PM_OPER', '#SHARE_RET_REVENUE'], firm_effect=False, time_effect=False,show_plots=True)
+
+
+# Assuming your dataframe is named df with columns: 'PM_OPER' and 'SHARE_RET_REVENUE'
+
+# Remove outliers in PM_OPER
+df_clean = df_long[(df_long['PM_OPER'] > -0.5) & (df_long['PM_OPER'] < 0.3)].copy()
+df_clean = df_clean.astype(float)
+# Remove rows with any NaNs or infs
+mask = (~X.isnull().any(axis=1)) & (~np.isinf(X).any(axis=1)) & (~y.isnull()) & (~np.isinf(y))
+X_clean = X[mask]
+y_clean = y[mask]
+# Add constant for intercept
+X = sm.add_constant(df_clean['#SHARE_RET_REVENUE'])
+y = df_clean['PM_OPER']
+
+# Fit robust regression (HuberT)
+rlm_model = sm.RLM(y_clean, X_clean, M=sm.robust.norms.HuberT())
+rlm_results = rlm_model.fit()
+print(rlm_results.summary())
+
+ols_model = sm.OLS(y_clean, X_clean).fit(cov_type='cluster')
+print(ols_model.summary())
+
+
+
+
+
+
 
 analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
 
@@ -1026,9 +1132,60 @@ port_rets_eq, cum_returns_eq = calc_and_plot_portfolio_returns_from_long(
 )
 
 
+#### Calculate and plot portfolio returns with lagged RRR
+
+#LAG2
+df_long['QUARTER'] = df_long.index.get_level_values('DATE').to_period('Q')
+df_long['RRR_LAG2'] = df_long.groupby(level='FIRM')['#RRR'].shift(2)
+df_long['RRR_LAG2'] = pd.to_numeric(df_long['RRR_LAG2'], errors='coerce')
+df_long['quartile_lag2'] = (
+    df_long.groupby('QUARTER')['RRR_LAG2']
+    .transform(safe_qcut)
+)
+returns = df_long.copy()
+returns = df_long.reset_index()
+returns = returns.rename(columns={'DATE': 'Date', 'quartile_lag2': 'quartile'})
+port_rets_vw_lag2, cum_returns_vw_lag2 = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='value', benchmarks=['SPX INDEX']
+)
+
+#LAG3
+df_long['RRR_LAG3'] = df_long.groupby(level='FIRM')['#RRR'].shift(3)
+df_long['RRR_LAG3'] = pd.to_numeric(df_long['RRR_LAG3'], errors='coerce')
+df_long['quartile_lag3'] = (
+    df_long.groupby('QUARTER')['RRR_LAG3']
+    .transform(safe_qcut)
+)
+returns = df_long.copy()
+returns = df_long.reset_index()
+returns = returns.rename(columns={'DATE': 'Date', 'quartile_lag3': 'quartile'})
+port_rets_vw_lag3, cum_returns_vw_lag3 = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='value', benchmarks=['SPX INDEX']
+)
+
+
+
+#LAG4
+df_long['RRR_LAG4'] = df_long.groupby(level='FIRM')['#RRR'].shift(4)
+df_long['RRR_LAG4'] = pd.to_numeric(df_long['RRR_LAG4'], errors='coerce')
+df_long['quartile_lag4'] = (
+    df_long.groupby('QUARTER')['RRR_LAG4']
+    .transform(safe_qcut)
+)
+returns = df_long.copy()
+returns = df_long.reset_index()
+returns = returns.rename(columns={'DATE': 'Date', 'quartile_lag4': 'quartile'})
+port_rets_vw_lag3, cum_returns_vw_lag4 = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='value', benchmarks=['SPX INDEX']
+)
+
+
+
+
+
 import statsmodels.api as sm
 from scipy.stats import skew, kurtosis
-def portfolio_performance_table(port_ret, benchmark_col='SPX INDEX'):
+def portfolio_performance_table(port_ret, benchmark_col='SPX'):
     measures = [
         'Geometric Mean Return', 'Downside Deviation', 'Max Drawdown',
         'Sortino Ratio', 'Skewness', 'Kurtosis', 'Alpha', 'Beta',
@@ -1041,49 +1198,38 @@ def portfolio_performance_table(port_ret, benchmark_col='SPX INDEX'):
         returns = port_ret[col].dropna()
         if benchmark_col in port_ret.columns:
             benchmark = port_ret[benchmark_col].reindex(returns.index).dropna()
-            returns = returns.loc[benchmark.index]  # align
+            returns = returns.loc[benchmark.index]
         else:
             benchmark = None
 
-        # Geometric mean (for log returns, convert to gross return first)
         geo_mean = np.exp(returns.mean()) - 1
-
-        # Downside deviation (negative returns only)
         downside = returns[returns < 0]
-        dd = downside.std(ddof=0)  # population std for downside
-
-        # Max drawdown (for log returns: use exp(cumsum()))
+        dd = downside.std(ddof=0)
         cum = np.exp(returns.cumsum())
         cum_max = cum.cummax()
         drawdown = (cum / cum_max - 1).min()
-
-        # Sortino ratio
         sortino = returns.mean() / dd if dd > 0 else np.nan
-
-        # Skewness and kurtosis
         skewness = skew(returns, nan_policy='omit')
         kurt = kurtosis(returns, nan_policy='omit', fisher=False)
 
-
-        for col in portfolios:
-            returns = port_ret[col].dropna()
-            benchmark = port_ret['SPX INDEX'].reindex(returns.index).dropna()
+        if benchmark is not None and not benchmark.isnull().all():
             aligned = pd.concat([returns, benchmark], axis=1).dropna()
             print(f"{col}: {len(aligned)} aligned months")
-
-        # Alpha and Beta (CAPM regression vs. benchmark)
-        if benchmark is not None and not benchmark.isnull().all():
-            X = sm.add_constant(benchmark)
-            reg = sm.OLS(returns, X).fit()
-            alpha = reg.params['const']
-            beta = reg.params[benchmark_col]
+            X = sm.add_constant(aligned[benchmark_col])
+            reg = sm.OLS(aligned[col], X).fit()
+            print(f"Params for {col}:")
+            print(reg.params)
+            try:
+                alpha = reg.params['const']
+                beta = reg.params[benchmark_col]
+            except (KeyError, IndexError):
+                # fallback to numeric index if names don't exist
+                alpha = reg.params.iloc[0]
+                beta = reg.params.iloc[1]
         else:
             alpha, beta = np.nan, np.nan
 
-        # 5% Value at Risk (VaR, historical)
         var5 = np.percentile(returns, 5)
-
-        # Hit ratio (fraction positive returns)
         hit = (returns > 0).mean()
 
         perf.at['Geometric Mean Return', col] = geo_mean
@@ -1099,12 +1245,12 @@ def portfolio_performance_table(port_ret, benchmark_col='SPX INDEX'):
 
     return perf
 
-perf_table_vw = portfolio_performance_table(port_rets_vw, benchmark_col='SPX INDEX')
+perf_table_vw = portfolio_performance_table(port_rets_vw, benchmark_col='SPX')
 perf_table_vw = perf_table_vw.map(lambda x: f"{x:.4f}" if isinstance(x, (float, np.floating)) else x)
 print(perf_table_vw)
 
 # For equal-weighted:
-perf_table_ew = portfolio_performance_table(port_rets_eq, benchmark_col='SPW INDEX')
+perf_table_ew = portfolio_performance_table(port_rets_eq, benchmark_col='SPW')
 perf_table_ew = perf_table_ew.map(lambda x: f"{x:.4f}" if isinstance(x, (float, np.floating)) else x)
 print(perf_table_ew)
 
@@ -1131,7 +1277,7 @@ combined.head()
 import statsmodels.api as sm
 
 # Choose which portfolios to analyze (exclude SPX/SPW if you want)
-portfolios = [col for col in port_rets.columns if col not in ['SPX', 'SPW']]
+portfolios = [col for col in port_rets_vw.columns if col not in ['SPX', 'SPW']]
 
 for p in portfolios:
     # Excess returns (portfolio minus risk-free)
