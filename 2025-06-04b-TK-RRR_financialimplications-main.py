@@ -138,7 +138,7 @@ for new_col, ret_col in zip(new_customer_cols, returning_customer_cols):
     )
 
     # Calculate Revenue New Growth
-    df_revenue[revenue_new_growth_col] = df_revenue[new_col] / df_revenue[total_revenue_col].shift(1)
+    df_revenue[revenue_new_growth_col] = (df_revenue[new_col] - df_revenue[new_col].shift(1)) / df_revenue[new_col].shift(1)
     # Reorder columns to place new columns next to Returning Customers
     cols = list(df_revenue.columns)
     ret_col_index = cols.index(ret_col)
@@ -337,6 +337,8 @@ bin_labels = ["Q1 (Lowest 25%)", "Q2", "Q3", "Q4 (Highest 25%)"]
 
 # List to store period-wise bin averages
 bin_avg_growth_list = []
+bin_avg_new_growth_list = [] #store period-wise new growth averages
+
 
 # Sort dataset by Date
 df_revenue = df_revenue.sort_values(by="Date")
@@ -345,7 +347,8 @@ df_revenue = df_revenue.sort_values(by="Date")
 first_period = df_revenue["Date"].min()
 
 
-
+""" 
+old code
 # Iterate over each period (Date)
 for date, group in df_revenue.groupby("Date"):
     if date == first_period:
@@ -354,23 +357,27 @@ for date, group in df_revenue.groupby("Date"):
 
     firm_rrr = {}
     firm_growth = {}
+    firm_new_growth = {}
 
     # Extract RRR and Revenue Growth for each company
     for company in company_names:
         rrr_col = f"{company}.#RRR"
         growth_col = f"{company}.#Revenue_Growth"
+        new_growth_col = f"{company}.#Revenue_New_Growth"
 
         # Ensure both columns exist in the dataset
-        if rrr_col in group.columns and growth_col in group.columns:
+        if rrr_col in group.columns and growth_col in group.columns and new_growth_col in group.columns:
             rrr_value = group[rrr_col].values[0]  # Extract RRR for the period
             growth_value = group[growth_col].values[0]  # Extract Growth Rate
+            new_growth_value = group[new_growth_col].values[0]  # Extract New Growth Rate
 
-            if not pd.isna(rrr_value) and not pd.isna(growth_value):  # Exclude NaN values
+            if not pd.isna(rrr_value) and not pd.isna(growth_value) and not pd.isna(new_growth_value):  # Exclude NaN values
                 firm_rrr[company] = rrr_value
                 firm_growth[company] = growth_value
+                firm_new_growth[company] = new_growth_value
 
     # Convert to DataFrame
-    df_firms = pd.DataFrame({"Company": list(firm_rrr.keys()), "RRR": list(firm_rrr.values()), "Growth": list(firm_growth.values())})
+    df_firms = pd.DataFrame({"Company": list(firm_rrr.keys()), "RRR": list(firm_rrr.values()), "Growth": list(firm_growth.values()), "New_Growth": list(firm_new_growth.values())})
 
     # Skip if there are too few firms for quartiles
     if len(df_firms) < 4:
@@ -397,6 +404,7 @@ df_bin_avg_growth = pd.DataFrame(bin_avg_growth_list)
 # Compute the final average growth rate per bin across all periods
 final_avg_growth_per_bin = df_bin_avg_growth.drop(columns="Date", errors="ignore").mean()
 print(final_avg_growth_per_bin)
+"""
 
 """
 RRR_Quartile
@@ -478,62 +486,68 @@ Q4 (Highest 25%)    0.021027
 
 '''
 
-###Revenue stavility analysis
-###Revenue stavility analysis
-###Revenue stavility analysis
+# %%
+# NEW: generic helper – bin by any metric each period, average a target, then average across periods
+def period_quantile_means(df_revenue, company_names, date_col="Date",
+                          sort_metric_tag="#RRR", target_metric_tag="#Revenue_Growth",
+                          q=4, labels=None, min_firms=4):
+    labels = labels or [f"Q{i}" for i in range(1, q+1)]
+    bin_avg_list = []
 
-#calculate the sum of negative growth rates for each firm in a new dataframe
-# Create a new DataFrame to store results
-firm_stats = []
+    for date, group in df_revenue.sort_values(by=date_col).groupby(date_col):
+        rows = []
+        for company in company_names:
+            s_col = f"{company}.{sort_metric_tag}"
+            t_col = f"{company}.{target_metric_tag}"
+            if s_col in group.columns and t_col in group.columns:
+                s_val = pd.to_numeric(group[s_col].values[0], errors="coerce")
+                t_val = pd.to_numeric(group[t_col].values[0], errors="coerce")
+                if pd.notna(s_val) and pd.notna(t_val):
+                    rows.append((company, s_val, t_val))
+        if len(rows) < min_firms:
+            continue
 
-# Extract firm names from df_revenue columns (befmore the dot)
-firm_names = set([col.split('.')[0] for col in df_revenue.columns if '.#RRR' in col])
+        df_f = pd.DataFrame(rows, columns=["Company", "SORT", "TARGET"])
+        try:
+            df_f["Q"] = pd.qcut(df_f["SORT"], q=q, labels=labels, duplicates="drop")
+        except ValueError:
+            continue
 
-for firm in firm_names:
-    # Column names for this firm
-    rrr_col = f"{firm}.#RRR"
-    growth_col = f"{firm}.#Revenue_Growth"
-    # Check if both columns exist
-    if rrr_col in df_revenue.columns and growth_col in df_revenue.columns:
-        growth_rates = pd.to_numeric(df_revenue[growth_col], errors='coerce')
-        rrr_values = pd.to_numeric(df_revenue[rrr_col], errors='coerce')
-        sum_neg_growth = growth_rates[growth_rates < 0].sum(skipna=True)
-        mean_rrr = rrr_values.mean(skipna=True)
-        firm_stats.append({'Firm': firm, 'Sum_Neg_Growth': sum_neg_growth, 'Mean_RRR': mean_rrr})
+        by_q = df_f.groupby("Q", observed=True)["TARGET"].mean().reindex(labels)
+        out = by_q.to_frame().T
+        out["Date"] = date
+        bin_avg_list.append(out)
 
-# Convert to DataFrame
-df_firm_stats = pd.DataFrame(firm_stats)
+    df_bin_avg = pd.concat(bin_avg_list, ignore_index=True) if bin_avg_list else pd.DataFrame(columns=labels+["Date"])
+    final_avg = df_bin_avg.drop(columns="Date", errors="ignore").mean(numeric_only=True)
+    return df_bin_avg, final_avg
 
-# Drop rows with missing values
-df_firm_stats = df_firm_stats.dropna(subset=['Sum_Neg_Growth', 'Mean_RRR'])
 
-# Regression: Sum_Neg_Growth ~ Mean_RRR
-import statsmodels.api as sm
-X = sm.add_constant(df_firm_stats['Mean_RRR'])
-y = df_firm_stats['Sum_Neg_Growth']
-model = sm.OLS(y, X).fit()
-print(model.summary())
+# NEW: run 1) RRR-quantiles → average Revenue Growth (already done, now via helper)
+bin_by_RRR, final_avg_growth_by_RRR = period_quantile_means(
+    df_revenue, company_names,
+    sort_metric_tag="#RRR",              # sort on RRR
+    target_metric_tag="#Revenue_Growth", # average Revenue Growth
+    q=4, labels=["Q1","Q2","Q3","Q4"]
+)
+print(final_avg_growth_by_RRR)
 
-# Histogram of Sum_Neg_Growth
-plt.figure(figsize=(8, 4))
-plt.hist(df_firm_stats['Sum_Neg_Growth'], bins=20, color='skyblue', edgecolor='black')
-plt.title('Histogram of Sum of Negative Growth Rates per Firm')
-plt.xlabel('Sum of Negative Growth Rates')
-plt.ylabel('Number of Firms')
-plt.grid(axis='y', linestyle='--', alpha=0.6)
-plt.tight_layout()
-plt.show()
 
-# Histogram of Mean_RRR
-plt.figure(figsize=(8, 4))
-plt.hist(df_firm_stats['Mean_RRR'], bins=20, color='salmon', edgecolor='black')
-plt.title('Histogram of Mean RRR per Firm')
-plt.xlabel('Mean RRR')
-plt.ylabel('Number of Firms')
-plt.grid(axis='y', linestyle='--', alpha=0.6)
-plt.tight_layout()
-plt.show()
+# NEW: run 2) New-Rev-Growth quantiles → average Revenue Growth (your second analysis)
+bin_by_NewGrowth, final_avg_growth_by_NewQuant = period_quantile_means(
+    df_revenue, company_names,
+    sort_metric_tag="#Revenue_New_Growth",  # sort on NEW revenue growth
+    target_metric_tag="#Revenue_Growth",    # still average Revenue Growth
+    q=4, labels=["Q1","Q2","Q3","Q4"]
+)
+print(final_avg_growth_by_NewQuant)
 
+"""
+Q1   -0.194442
+Q2   -0.034555
+Q3    0.095310
+Q4    0.575667
+"""
 
 #==============================================================================
 # 4. Merging the Data
@@ -697,6 +711,11 @@ df_long['REV_GROWTH_PCT'] = (np.log(df_long['SALES_REV_TURN'].replace(0, np.nan)
 df_long.drop(columns='SALES_REV_TURN_LAG1', inplace=True)
 
 
+df_long['Intersection'] = (df_long['REVENUE_NEW_GROWTH_PCT'] * (1-df_long['#SHARE_RET_REVENUE'])).replace(0, np.nan)
+
+df_long['EPR'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan))
+df_long['EPS'] = (df_long['IS_OPER_INC'] / df_long['BS_SH_OUT'].replace(0, np.nan))
+
 #Calculate stock returns
 #Calculate stock returns
 #Calculate stock returns
@@ -830,15 +849,15 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 ### Regression
 ### Regression
 ### Regression
-
-
+analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'Intersection'], firm_effect=False, time_effect=False,show_plots=False)
 
 
 analyze_columns(['IS_OPER_INC', 'SALES_REV_TURN_EST'], firm_effect=False, time_effect=False,show_plots=True)
 
-analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=False, time_effect=False,show_plots=True)
+analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=True)
 
-analyze_columns(['PM_OPER', '#SHARE_RET_REVENUE'], firm_effect=False, time_effect=False,show_plots=True)
+analyze_columns(['PM_OPER', '#SHARE_RET_REVENUE'], firm_effect=True, time_effect=True,show_plots=True)
 
 
 # Assuming your dataframe is named df with columns: 'PM_OPER' and 'SHARE_RET_REVENUE'
@@ -911,7 +930,7 @@ to predict or to explain?
 '''
 #explain
 analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR'], firm_effect=False, time_effect=False, show_plots=True)
-analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR','RRR_LAG'], firm_effect=False, time_effect=False, show_plots=False)
+analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','RRR_LAG'], firm_effect=True, time_effect=False, show_plots=False)
 
 '''
 why do I get those results?
@@ -1132,7 +1151,24 @@ port_rets_eq, cum_returns_eq = calc_and_plot_portfolio_returns_from_long(
 )
 
 
+
+
+
 #### Calculate and plot portfolio returns with lagged RRR
+
+#no lag
+df_long['QUARTER'] = df_long.index.get_level_values('DATE').to_period('Q')
+df_long['RRR_LAG0'] = df_long.groupby(level='FIRM')['#RRR'].shift(0)
+df_long['RRR_LAG0'] = pd.to_numeric(df_long['RRR_LAG0'], errors='coerce')
+df_long['quartile_lag0'] = (
+    df_long.groupby('QUARTER')['RRR_LAG0'].transform(safe_qcut) #same as quartile
+)
+returns = df_long.copy()
+returns = df_long.reset_index() 
+returns = returns.rename(columns={'DATE': 'Date', 'quartile_lag0': 'quartile'})
+port_rets_vw_lag0, cum_returns_vw_lag0 = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='value', benchmarks=['SPX INDEX']
+)
 
 #LAG2
 df_long['QUARTER'] = df_long.index.get_level_values('DATE').to_period('Q')
@@ -1581,3 +1617,4 @@ for p in portfolios:
     print(model.summary())
 
 #==============================================================================
+# %%
