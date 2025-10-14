@@ -94,13 +94,7 @@ df_revenue = data_rows_rev.reset_index(drop=True);
 ### replace empty cells with NaN
 df_revenue = df_revenue.replace(r'^\s*$', pd.NA, regex=True);
 
-'''
-ROP CART US EQUITY columns
-df_revenue = df_revenue.loc[
-    :, 
-    ~df_revenue.columns.str.contains('CART US EQUITY', case=False)
-]
-'''
+
 
 #Add totel and RRR and shares
 # Remove duplicate columns
@@ -120,7 +114,9 @@ for new_col, ret_col in zip(new_customer_cols, returning_customer_cols):
     share_ret_revenue_col = ret_col.replace('#Returning_Customers', '#Share_Ret_Revenue')
     rrr_col = ret_col.replace('#Returning_Customers', '#RRR')
     revenue_growth_col = ret_col.replace('#Returning_Customers', '#Revenue_Growth')
-    revenue_new_growth_col = new_col.replace('#New_Customers', '#Revenue_New_Growth')
+    acq_rate_col = new_col.replace('#New_Customers', '#Acq_Rate')
+    gm_col = new_col.replace('#New_Customers', '#Growth_Mix')
+    growth_indicator_col = new_col.replace('#New_Customers', '#Growth_Indicator')
 
     # Add Total Revenue
     df_revenue[total_revenue_col] = df_revenue[new_col] + df_revenue[ret_col]
@@ -138,25 +134,38 @@ for new_col, ret_col in zip(new_customer_cols, returning_customer_cols):
     )
 
     # Calculate Revenue New Growth
-    df_revenue[revenue_new_growth_col] = (df_revenue[new_col] - df_revenue[new_col].shift(1)) / df_revenue[new_col].shift(1)
+    df_revenue[acq_rate_col] = (df_revenue[new_col] - df_revenue[new_col].shift(1)) / df_revenue[new_col].shift(1)
+
+    # Calculate Growth Mix
+    df_revenue[gm_col] = (df_revenue[ret_col] -  df_revenue[ret_col].shift(1)) / (df_revenue[total_revenue_col] -  df_revenue[total_revenue_col].shift(1))
+
+    # calculate Growth Indicator
+    df_revenue[growth_indicator_col] = df_revenue[revenue_growth_col].apply(
+        lambda x: 1 if x > 0 else (-1 if x < 0 else 0)
+    )
+
     # Reorder columns to place new columns next to Returning Customers
-    cols = list(df_revenue.columns)
-    ret_col_index = cols.index(ret_col)
+    cols = list(df_revenue.columns) #Get current column order
+    ret_col_index = cols.index(ret_col) # Find index of the Returning Customer column
     # Remove and reinsert new columns next to the Returning Customer column
-    
     cols.remove(total_revenue_col)
     cols.remove(share_ret_revenue_col)
     cols.remove(rrr_col)
     cols.remove(revenue_growth_col)
-    cols.remove(revenue_new_growth_col)
+    cols.remove(acq_rate_col)
+    cols.remove(gm_col)
+    cols.remove(growth_indicator_col)
+
     cols.insert(ret_col_index + 1, total_revenue_col)
     cols.insert(ret_col_index + 2, share_ret_revenue_col)
     cols.insert(ret_col_index + 3, rrr_col)
     cols.insert(ret_col_index + 4, revenue_growth_col)
-    cols.insert(ret_col_index + 5, revenue_new_growth_col)
+    cols.insert(ret_col_index + 5, acq_rate_col)
+    cols.insert(ret_col_index + 6, gm_col)
+    cols.insert(ret_col_index + 7, growth_indicator_col)
     df_revenue = df_revenue[cols]
 
-
+        
 
 #######################
 # 2.2 Fundamental Data#
@@ -201,9 +210,8 @@ missing_summary_grouped = missing_summary.groupby('Variable')['Missing_Count'].s
 print("Top variables with missing values:")
 print(missing_summary_grouped.head(10))  # Show top 10 variables with most missing values
 
-columns_to_replace = [col for col in df_fundamentals.columns if "IS_RD_EXPEND" in col or "IS_SGA_EXPENSE" in col]
-
 # Replace NaN values with 0 in the selected columns
+columns_to_replace = [col for col in df_fundamentals.columns if "IS_RD_EXPEND" in col or "IS_SGA_EXPENSE" in col]
 df_fundamentals[columns_to_replace] = df_fundamentals[columns_to_replace].fillna(0)
 
 
@@ -239,7 +247,7 @@ make it more efficient, create function
 
 
 # Define the columns of interest
-columns_of_interest = ["#RRR", "#Revenue_Growth", "#Revenue_New_Growth"]
+columns_of_interest = ["#RRR", "#Revenue_Growth", "#Acq_Rate", "#Share_Ret_Revenue", "#Growth_Mix"]
 
 # Ensure the Date column is in datetime format for proper sorting
 df_revenue['Date'] = pd.to_datetime(df_revenue['Date'])
@@ -260,6 +268,8 @@ for metric in columns_of_interest:
     # Remove the top 4 highest values correctly for display purposes (not statistics)
     df_filtered = df_metric_melted.copy()
     df_filtered = df_filtered[df_filtered[metric] < df_filtered[metric].nlargest(4).min()]  # Exclude top 4 values
+    # Remove the lowest 4 values for display purposes (not statistics)
+    df_filtered = df_filtered[df_filtered[metric] > df_filtered[metric].nsmallest(4).max()]  # Exclude lowest 4 values
 
     # Compute additional statistics
     q25, q75 = df_metric_melted[metric].quantile([0.25, 0.75])
@@ -319,7 +329,7 @@ mean     0.287643
 std      0.411074
 min      0.000024
 max     16.130858
-Name: #Revenue_New_Growth, dtype: float64
+Name: #Acq_Rate, dtype: float64
 25th Percentile (Q1): 0.10
 75th Percentile (Q3): 0.37
 """
@@ -347,163 +357,55 @@ df_revenue = df_revenue.sort_values(by="Date")
 first_period = df_revenue["Date"].min()
 
 
-""" 
-old code
-# Iterate over each period (Date)
-for date, group in df_revenue.groupby("Date"):
-    if date == first_period:
-        print(f"Skipping first period {date} (No RRR exists).")
-        continue  # Skip the first period since RRR cannot be computed
-
-    firm_rrr = {}
-    firm_growth = {}
-    firm_new_growth = {}
-
-    # Extract RRR and Revenue Growth for each company
-    for company in company_names:
-        rrr_col = f"{company}.#RRR"
-        growth_col = f"{company}.#Revenue_Growth"
-        new_growth_col = f"{company}.#Revenue_New_Growth"
-
-        # Ensure both columns exist in the dataset
-        if rrr_col in group.columns and growth_col in group.columns and new_growth_col in group.columns:
-            rrr_value = group[rrr_col].values[0]  # Extract RRR for the period
-            growth_value = group[growth_col].values[0]  # Extract Growth Rate
-            new_growth_value = group[new_growth_col].values[0]  # Extract New Growth Rate
-
-            if not pd.isna(rrr_value) and not pd.isna(growth_value) and not pd.isna(new_growth_value):  # Exclude NaN values
-                firm_rrr[company] = rrr_value
-                firm_growth[company] = growth_value
-                firm_new_growth[company] = new_growth_value
-
-    # Convert to DataFrame
-    df_firms = pd.DataFrame({"Company": list(firm_rrr.keys()), "RRR": list(firm_rrr.values()), "Growth": list(firm_growth.values()), "New_Growth": list(firm_new_growth.values())})
-
-    # Skip if there are too few firms for quartiles
-    if len(df_firms) < 4:
-        print(f"Skipping Date {date}: Not enough firms for quartile binning.")
-        continue
-
-    # Create quartile bins based on RRR
-    try:
-        df_firms["RRR_Quartile"] = pd.qcut(df_firms["RRR"], q=4, labels=bin_labels)
-    except ValueError:  # Catch cases where binning is not possible
-        print(f"Skipping Date {date}: Unable to compute quartiles due to identical values.")
-        continue
-
-    # Calculate the average growth rate for each bin (Fix: observed=True)
-    avg_growth_per_bin = df_firms.groupby("RRR_Quartile", observed=True)["Growth"].mean()
-
-    # Store results for this period
-    avg_growth_per_bin["Date"] = date
-    bin_avg_growth_list.append(avg_growth_per_bin)
-
-# Convert list to DataFrame
-df_bin_avg_growth = pd.DataFrame(bin_avg_growth_list)
-
-# Compute the final average growth rate per bin across all periods
-final_avg_growth_per_bin = df_bin_avg_growth.drop(columns="Date", errors="ignore").mean()
-print(final_avg_growth_per_bin)
-"""
-
-"""
-RRR_Quartile
-Q1 (Lowest 25%)    -0.090065
-Q2                 -0.002914
-Q3                  0.070511
-Q4 (Highest 25%)    0.463775 / 0.323965 ohne outliner
-Triggered by one period where its?
-"""
-
-"""
-filter outliner out?
-"""
-
-'''
-Forecasting revenue growth based on RRR quartiles
-bin_labels = ["Q1 (Lowest 25%)", "Q2", "Q3", "Q4 (Highest 25%)"]
-bin_avg_growth_list = []
-
-# First, ensure your data is sorted by date
-dates = sorted(df_revenue["Date"].unique())
-
-# Iterate from the second period onward (so t-1 exists)
-for i in range(1, len(dates)):
-    date_t = dates[i]
-    date_t_minus_1 = dates[i-1]
-
-    group_t = df_revenue[df_revenue["Date"] == date_t]
-    group_t_minus_1 = df_revenue[df_revenue["Date"] == date_t_minus_1]
-
-    firm_rrr_lag = {}
-    firm_growth = {}
-
-    for company in company_names:
-        rrr_col = f"{company}.#RRR"
-        growth_col = f"{company}.#Revenue_Growth"
-
-        if (rrr_col in group_t_minus_1.columns) and (growth_col in group_t.columns):
-            # Lagged RRR from t-1
-            rrr_value = group_t_minus_1[rrr_col].values[0]
-            growth_value = group_t[growth_col].values[0]
-            if not pd.isna(rrr_value) and not pd.isna(growth_value):
-                firm_rrr_lag[company] = rrr_value
-                firm_growth[company] = growth_value
-
-    if len(firm_rrr_lag) < 4:
-        print(f"Skipping Date {date_t}: Not enough firms for quartile binning.")
-        continue
-
-    # Build DataFrame with lagged RRR and next-period growth
-    df_firms = pd.DataFrame({
-        "Company": list(firm_rrr_lag.keys()),
-        "RRR_Lag": list(firm_rrr_lag.values()),
-        "Growth": [firm_growth[c] for c in firm_rrr_lag.keys()]
-    })
-
-    try:
-        df_firms["RRR_Quartile"] = pd.qcut(df_firms["RRR_Lag"], q=4, labels=bin_labels)
-    except ValueError:
-        print(f"Skipping Date {date_t}: Unable to compute quartiles due to identical values.")
-        continue
-
-    avg_growth_per_bin = df_firms.groupby("RRR_Quartile", observed=True)["Growth"].mean()
-    avg_growth_per_bin["Date"] = date_t
-    bin_avg_growth_list.append(avg_growth_per_bin)
-
-# Convert list to DataFrame
-df_bin_avg_growth = pd.DataFrame(bin_avg_growth_list)
-
-# Compute the final average growth rate per bin across all periods
-final_avg_growth_per_bin = df_bin_avg_growth.drop(columns="Date", errors="ignore").mean()
-print(final_avg_growth_per_bin)
-
-RRR_Quartile
-Q1 (Lowest 25%)     0.245503
-Q2                  0.086181
-Q3                  0.068035
-Q4 (Highest 25%)    0.021027
-
-'''
-
-# %%
 # NEW: generic helper – bin by any metric each period, average a target, then average across periods
 def period_quantile_means(df_revenue, company_names, date_col="Date",
                           sort_metric_tag="#RRR", target_metric_tag="#Revenue_Growth",
-                          q=4, labels=None, min_firms=4):
+                          q=4, labels=None, min_firms=4, lead=0):
+    """
+    lead: int, number of periods to shift target forward (positive = future values)
+          e.g., lead=1 means use next period's target value
+    """
     labels = labels or [f"Q{i}" for i in range(1, q+1)]
     bin_avg_list = []
-
-    for date, group in df_revenue.sort_values(by=date_col).groupby(date_col):
+    
+    # Sort by date to ensure proper ordering
+    df_sorted = df_revenue.sort_values(by=date_col).reset_index(drop=True)
+    dates = df_sorted[date_col].unique()
+    
+    for i, date in enumerate(dates):
+        # Skip if we can't look ahead far enough
+        if lead > 0 and i + lead >= len(dates):
+            continue
+            
+        group = df_sorted[df_sorted[date_col] == date]
+        
+        # If lead > 0, get target values from future period
+        if lead > 0:
+            target_date = dates[i + lead]
+            target_group = df_sorted[df_sorted[date_col] == target_date]
+        else:
+            target_group = group
+        
         rows = []
         for company in company_names:
             s_col = f"{company}.{sort_metric_tag}"
             t_col = f"{company}.{target_metric_tag}"
-            if s_col in group.columns and t_col in group.columns:
+            
+            # Get sort value from current period
+            if s_col in group.columns:
                 s_val = pd.to_numeric(group[s_col].values[0], errors="coerce")
-                t_val = pd.to_numeric(group[t_col].values[0], errors="coerce")
-                if pd.notna(s_val) and pd.notna(t_val):
-                    rows.append((company, s_val, t_val))
+            else:
+                continue
+                
+            # Get target value from current or future period
+            if t_col in target_group.columns:
+                t_val = pd.to_numeric(target_group[t_col].values[0], errors="coerce")
+            else:
+                continue
+                
+            if pd.notna(s_val) and pd.notna(t_val):
+                rows.append((company, s_val, t_val))
+                
         if len(rows) < min_firms:
             continue
 
@@ -522,31 +424,80 @@ def period_quantile_means(df_revenue, company_names, date_col="Date",
     final_avg = df_bin_avg.drop(columns="Date", errors="ignore").mean(numeric_only=True)
     return df_bin_avg, final_avg
 
-
-# NEW: run 1) RRR-quantiles → average Revenue Growth (already done, now via helper)
 bin_by_RRR, final_avg_growth_by_RRR = period_quantile_means(
     df_revenue, company_names,
-    sort_metric_tag="#RRR",              # sort on RRR
-    target_metric_tag="#Revenue_Growth", # average Revenue Growth
-    q=4, labels=["Q1","Q2","Q3","Q4"]
+    sort_metric_tag="#RRR",
+    target_metric_tag="#Revenue_Growth",
+    q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
+    lead=0  # same period
 )
+print("Current Period RRR → Current Growth:")
 print(final_avg_growth_by_RRR)
 
 
-# NEW: run 2) New-Rev-Growth quantiles → average Revenue Growth (your second analysis)
-bin_by_NewGrowth, final_avg_growth_by_NewQuant = period_quantile_means(
+
+# Current period Acq_Rate
+bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_means(
     df_revenue, company_names,
-    sort_metric_tag="#Revenue_New_Growth",  # sort on NEW revenue growth
-    target_metric_tag="#Revenue_Growth",    # still average Revenue Growth
-    q=4, labels=["Q1","Q2","Q3","Q4"]
+    sort_metric_tag="#Acq_Rate",
+    target_metric_tag="#Revenue_Growth",
+    q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
+    lead=0  # same period
 )
-print(final_avg_growth_by_NewQuant)
+print("\nCurrent Period Acq Rate → Current Growth")
+print(final_avg_growth_by_Acq_lead1)
+
+
+# Current period RRR → NEXT period Revenue Growth (forecast)
+bin_by_RRR_lead1, final_avg_growth_by_RRR_lead1 = period_quantile_means(
+    df_revenue, company_names,
+    sort_metric_tag="#RRR",
+    target_metric_tag="#Revenue_Growth",
+    q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
+    lead=1  # next period
+)
+print("\nCurrent Period RRR → Next Period Growth (Lead=1):")
+print(final_avg_growth_by_RRR_lead1)
+
+# Current period Acq_Rate → NEXT period Revenue Growth
+bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_means(
+    df_revenue, company_names,
+    sort_metric_tag="#Acq_Rate",
+    target_metric_tag="#Revenue_Growth",
+    q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
+    lead=1  # next period
+)
+print("\nCurrent Period Acq Rate → Next Period Growth (Lead=1):")
+print(final_avg_growth_by_Acq_lead1)
+
+
+# Current period Acq_Rate → four period Revenue Growth
+
+bin_by_RRR_lead4, final_avg_growth_by_RRR_lead2 = period_quantile_means(
+    df_revenue, company_names,
+    sort_metric_tag="#RRR",
+    target_metric_tag="#Revenue_Growth",
+    q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
+    lead=4  # two periods ahead
+)
+print("\nCurrent Period RRR → Four Periods Ahead Growth (Lead=4):")
+print(final_avg_growth_by_RRR_lead2)
+
+bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_means(
+    df_revenue, company_names,
+    sort_metric_tag="#Acq_Rate",
+    target_metric_tag="#Revenue_Growth",
+    q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
+    lead=1  # next period
+)
+print("\nCurrent Period Acq Rate → Four Periods Ahead Growth (Lead=4):")
+print(final_avg_growth_by_Acq_lead1)
+
+
+
 
 """
-Q1   -0.194442
-Q2   -0.034555
-Q3    0.095310
-Q4    0.575667
+really only current period -> in Q1 seems an outliner
 """
 
 #==============================================================================
@@ -684,16 +635,28 @@ print(f"Correlation between #Returning Customer and the Estimated Returning Reve
 
 '''
 
-#Calculate Rest
+#Calculate Metrics
+#Calculate Metrics
+#Calculate Metrics
+
+'''
+clean up
+'''
+
 
 df_long['RET_EST_X_SHARE_RET'] = df_long['RETAINED_REV_EST'] * df_long['#SHARE_RET_REVENUE']
 
 # Multiply by 100
-df_long['RRR_pct'] = df_long['#RRR'] * 100
+df_long['RRR_PCT'] = df_long['#RRR'] * 100
 # Create a one-period lagged version of RRR_pct for each firm
-df_long['RRR_pct_lag1'] = df_long.groupby(level='FIRM')['RRR_pct'].shift(1)
+df_long['RRR_PCT_LAG1'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(1)
+# Create a four-period lagged version of RRR_pct for each firm
+df_long['RRR_PCT_LAG4'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(4)
 
-df_long['REVENUE_NEW_GROWTH_PCT'] = df_long['#REVENUE_NEW_GROWTH'] * 100
+df_long['ACQ_RATE_PCT'] = df_long['#ACQ_RATE'] * 100
+df_long['ACQ_RATE_PCT_LAG1'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(1)
+df_long['ACQ_RATE_PCT_LAG4'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(4)   
+
 # Compute IS_SGA_EXPENSE_PCT only when SALES_REV_TURN is valid; otherwise, assign NaN
 df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
 
@@ -711,7 +674,17 @@ df_long['REV_GROWTH_PCT'] = (np.log(df_long['SALES_REV_TURN'].replace(0, np.nan)
 df_long.drop(columns='SALES_REV_TURN_LAG1', inplace=True)
 
 
-df_long['Intersection'] = (df_long['REVENUE_NEW_GROWTH_PCT'] * (1-df_long['#SHARE_RET_REVENUE'])).replace(0, np.nan)
+df_long['IS_OPER_INC_LAG1'] = df_long.groupby(level='FIRM')['IS_OPER_INC'].shift(1)
+df_long['IS_OPER_INC_GROWTH_PCT'] = (
+    (df_long['IS_OPER_INC'] - df_long['IS_OPER_INC_LAG1']) / 
+    df_long['IS_OPER_INC_LAG1'].replace(0, np.nan)
+) * 100
+
+# Clean up the lag column if you don't need it
+df_long.drop(columns='IS_OPER_INC_LAG1', inplace=True)
+
+
+df_long['NEW_REV_GROWTH'] = (df_long['ACQ_RATE_PCT'] * (1-df_long['#SHARE_RET_REVENUE'])).replace(0, np.nan)
 
 df_long['EPR'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan))
 df_long['EPS'] = (df_long['IS_OPER_INC'] / df_long['BS_SH_OUT'].replace(0, np.nan))
@@ -849,7 +822,7 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 ### Regression
 ### Regression
 ### Regression
-analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'ACQ_RATE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'Intersection'], firm_effect=False, time_effect=False,show_plots=False)
 
 
@@ -893,8 +866,8 @@ analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effe
 new rev est is not significant check why
 '''
 
-analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
-analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'REVENUE_NEW_GROWTH_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','ACQ_RATE_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'ACQ_RATE_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True,show_plots=False)
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G'], firm_effect=True, time_effect=True,show_plots=True)
@@ -1327,6 +1300,233 @@ for p in portfolios:
 
 '''
 neu ende
+'''
+
+
+'''
+update with revenue acquisitn
+# =============================================================================
+# 0) Imports
+# =============================================================================
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# =============================================================================
+# 1) Read monthly PX_LAST file (two header rows) and build monthly log returns
+#    NOTE: if you've already built df_monthly_returns, you can skip to step 2.
+# =============================================================================
+file3_path = r"C:\Users\thkraft\eCommerce-Goethe Dropbox\Thilo Kraft\Thilo(privat)\Privat\Research\RRR_FinancialImplication\Data\2025-07-02a-TK-Monthly-Returns_Python.xlsx"
+
+# read with no header, then compose headers from first 2 rows
+monthly_raw = pd.read_excel(file3_path, header=None)
+header_rows = monthly_raw.iloc[:2]
+data_rows   = monthly_raw.iloc[2:].copy()
+
+# build "Firm.Variable" headers (e.g., "SPX INDEX.PX_LAST")
+combined_headers = header_rows.apply(lambda x: x.astype(str).str.strip(), axis=0)
+col_headers = combined_headers.apply(lambda x: '.'.join(x.dropna()), axis=0)
+data_rows.columns = col_headers
+
+# rename first column to Date and parse
+data_rows = data_rows.reset_index(drop=True)
+data_rows.rename(columns={data_rows.columns[0]: 'Date'}, inplace=True)
+data_rows.replace('#N/A N/A', np.nan, inplace=True)
+
+# parse Date (your file looks like DD/MM/YYYY)
+data_rows['Date'] = pd.to_datetime(data_rows['Date'], errors='coerce', dayfirst=True)
+
+# ensure numeric for all PX columns
+df_prices = data_rows.copy()
+for c in df_prices.columns:
+    if c != 'Date':
+        df_prices[c] = pd.to_numeric(df_prices[c], errors='coerce')
+
+# monthly log returns
+px_only = df_prices.drop(columns=['Date'])
+returns_px = np.log(px_only / px_only.shift(1))
+
+# back the Date column in & melt to long
+returns_px['Date'] = df_prices['Date'].values
+returns = returns_px.melt(id_vars='Date', var_name='FirmVar', value_name='RETURN_LOG').dropna(subset=['RETURN_LOG'])
+
+# extract firm name (strip the ".PX_LAST" suffix)
+returns['FIRM'] = returns['FirmVar'].str.replace('.PX_LAST', '', regex=False)
+returns.drop(columns=['FirmVar'], inplace=True)
+
+# unify firm casing for safe merges
+returns['FIRM'] = returns['FIRM'].str.upper()
+
+# build quarter end key for monthly dates
+returns['QUARTER'] = returns['Date'].dt.to_period('Q').dt.to_timestamp('Q', 'end')
+
+# =============================================================================
+# 2) Prepare quarterly signals from df_long (RRR_LAG, MCAP, #Acq_Rate)
+#    Assumes df_long exists with MultiIndex ['FIRM','DATE'] and these columns.
+# =============================================================================
+# if your df_long does not have 'RRR_LAG' but has 'RRR_pct_lag1' (in %), create it:
+if 'RRR_LAG' not in df_long.columns and 'RRR_pct_lag1' in df_long.columns:
+    df_long['RRR_LAG'] = pd.to_numeric(df_long['RRR_pct_lag1'], errors='coerce') / 100.0
+
+df_q = (
+    df_long.reset_index()[['FIRM', 'DATE', 'RRR_LAG', 'HISTORICAL_MARKET_CAP', '#Acq_Rate']]
+    .copy()
+)
+df_q['FIRM'] = df_q['FIRM'].astype(str).str.upper()
+df_q['DATE'] = pd.to_datetime(df_q['DATE'], errors='coerce')
+df_q.rename(columns={'#Acq_Rate': 'REV_NEW_G'}, inplace=True)
+df_q['QUARTER'] = df_q['DATE'].dt.to_period('Q').dt.to_timestamp('Q', 'end')
+
+# =============================================================================
+# 3) Merge quarterly signals onto monthly returns (by FIRM, QUARTER)
+# =============================================================================
+returns = returns.merge(
+    df_q[['FIRM', 'QUARTER', 'RRR_LAG', 'HISTORICAL_MARKET_CAP', 'REV_NEW_G']],
+    on=['FIRM','QUARTER'],
+    how='left'
+)
+
+# =============================================================================
+# 4) Assign quartiles each quarter for BOTH sorts:
+#       (a) RRR_LAG-based quartiles  → column: 'quartile'
+#       (b) New-Rev-Growth quartiles → column: 'quartile_new'
+# =============================================================================
+def assign_qcut(series, q=4, labels=None):
+    """Return a Series aligned to 'series' index with quartile labels; NaN if not enough spread."""
+    labels = labels or [f"Q{i}" for i in range(1, q+1)]
+    s = pd.to_numeric(series, errors='coerce')
+    out = pd.Series(index=s.index, dtype=object)
+    mask = s.notna()
+    s_non = s[mask]
+    if s_non.nunique() < q:
+        return out  # all NaN
+    try:
+        out.loc[mask] = pd.qcut(s_non, q=q, labels=labels, duplicates='drop').astype(object).values
+    except ValueError:
+        # ties / insufficient spread after duplicates='drop'
+        return pd.Series(index=s.index, dtype=object)
+    return out
+
+returns['RRR_LAG']  = pd.to_numeric(returns['RRR_LAG'], errors='coerce')
+returns['REV_NEW_G'] = pd.to_numeric(returns['REV_NEW_G'], errors='coerce')
+
+# RRR-based quartiles
+returns['quartile'] = (
+    returns.groupby('QUARTER')['RRR_LAG']
+           .transform(lambda s: assign_qcut(s, q=4, labels=['Q1','Q2','Q3','Q4']))
+)
+
+# New-Rev-Growth-based quartiles
+returns['quartile_new'] = (
+    returns.groupby('QUARTER')['REV_NEW_G']
+           .transform(lambda s: assign_qcut(s, q=4, labels=['Q1','Q2','Q3','Q4']))
+)
+
+# =============================================================================
+# 5) Function to compute monthly portfolio returns (equal/value weighted),
+#    add benchmarks from the same 'returns' table, cumulate & plot.
+# =============================================================================
+def calc_and_plot_portfolio_returns_from_long(
+    returns: pd.DataFrame,
+    weight_type: str = 'value',                     # 'value' or 'equal'
+    benchmarks = ('SPX INDEX', 'SPW INDEX'),        # names in returns['FIRM']
+    quartile_col: str = 'quartile',                 # 'quartile' or 'quartile_new'
+    title_prefix: str = 'RRR Quartile'
+):
+    """
+    Input 'returns' must have columns:
+      Date, FIRM, RETURN_LOG, QUARTER, quartile columns, HISTORICAL_MARKET_CAP
+    Produces monthly portfolio log-return series for Q1..Q4 + specified benchmarks.
+    """
+    df = returns.copy()
+
+    # portfolio formation
+    if weight_type.lower() == 'equal':
+        port_rets = (
+            df.groupby(['Date', quartile_col])['RETURN_LOG']
+              .mean()
+              .unstack(quartile_col)
+              .sort_index()
+        )
+    else:
+        df['MCAP'] = pd.to_numeric(df['HISTORICAL_MARKET_CAP'], errors='coerce')
+        df['MCAP_SUM'] = df.groupby(['Date', quartile_col])['MCAP'].transform('sum')
+        df['w'] = df['MCAP'] / df['MCAP_SUM']
+        df['w_return'] = df['w'] * df['RETURN_LOG']
+        port_rets = (
+            df.groupby(['Date', quartile_col])['w_return']
+              .sum()
+              .unstack(quartile_col)
+              .sort_index()
+        )
+
+    # benchmarks: pull directly from returns (monthly log returns already)
+    for bmk in benchmarks:
+        bmk_up = str(bmk).upper()
+        if bmk_up in df['FIRM'].unique():
+            ser = (df[df['FIRM'] == bmk_up]
+                   .groupby('Date')['RETURN_LOG']
+                   .mean())  # in case of duplicates
+            port_rets[bmk_up] = ser.reindex(port_rets.index)
+
+    # cumulative (start at 0: i.e., growth from 0 → cum = exp(cumsum)-1)
+    cum = np.exp(port_rets.cumsum()) - 1.0
+    # prepend a zero month for a clean start at 0
+    if not cum.empty:
+        first_date = cum.index.min()
+        prior_date = (first_date - pd.offsets.MonthEnd(1))
+        start_row = pd.DataFrame({c: 0.0 for c in cum.columns}, index=[prior_date])
+        cum = pd.concat([start_row, cum]).sort_index()
+
+    # plot
+    plt.figure(figsize=(12,6))
+    for col in cum.columns:
+        plt.plot(cum.index, cum[col], label=col)
+    plt.title(f'{title_prefix} Portfolios vs Benchmarks ({weight_type.capitalize()}-Weighted)')
+    plt.xlabel('Date')
+    plt.ylabel('Cumulative Return (start = 0)')
+    plt.legend(title='Series', loc='upper left')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.show()
+
+    return port_rets, cum
+
+# =============================================================================
+# 6) RUN: RRR-sorted (quartile), value-weighted & equal-weighted
+# =============================================================================
+port_rets_vw_RRR, cum_vw_RRR = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='value',
+    benchmarks=('SPX INDEX', 'SPW INDEX'),
+    quartile_col='quartile',
+    title_prefix='RRR'
+)
+
+port_rets_eq_RRR, cum_eq_RRR = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='equal',
+    benchmarks=('SPX INDEX', 'SPW INDEX'),
+    quartile_col='quartile',
+    title_prefix='RRR'
+)
+
+# =============================================================================
+# 7) RUN: New-Revenue-Growth-sorted (quartile_new), value- & equal-weighted
+# =============================================================================
+port_rets_vw_NEW, cum_vw_NEW = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='value',
+    benchmarks=('SPX INDEX', 'SPW INDEX'),
+    quartile_col='quartile_new',
+    title_prefix='New-Rev-Growth'
+)
+
+port_rets_eq_NEW, cum_eq_NEW = calc_and_plot_portfolio_returns_from_long(
+    returns, weight_type='equal',
+    benchmarks=('SPX INDEX', 'SPW INDEX'),
+    quartile_col='quartile_new',
+    title_prefix='New-Rev-Growth'
+)
+
+
 '''
 #==============================================================================
 # 6. Portfolio Analysis
