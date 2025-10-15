@@ -134,7 +134,7 @@ for new_col, ret_col in zip(new_customer_cols, returning_customer_cols):
     )
 
     # Calculate Revenue New Growth
-    df_revenue[acq_rate_col] = (df_revenue[new_col] - df_revenue[new_col].shift(1)) / df_revenue[new_col].shift(1)
+    df_revenue[acq_rate_col] = (df_revenue[new_col] / df_revenue[new_col].shift(1))
 
     # Calculate Growth Mix
     df_revenue[gm_col] = (df_revenue[ret_col] -  df_revenue[ret_col].shift(1)) / (df_revenue[total_revenue_col] -  df_revenue[total_revenue_col].shift(1))
@@ -272,7 +272,7 @@ for metric in columns_of_interest:
     df_filtered = df_filtered[df_filtered[metric] > df_filtered[metric].nsmallest(4).max()]  # Exclude lowest 4 values
 
     # Compute additional statistics
-    q25, q75 = df_metric_melted[metric].quantile([0.25, 0.75])
+    q25, q50, q75 = df_metric_melted[metric].quantile([0.25, 0.50, 0.75])
 
     # Ensure the x-axis (dates) remain sorted
     df_filtered = df_filtered.sort_values(by="Date")
@@ -293,6 +293,7 @@ for metric in columns_of_interest:
     print(f"\nSummary statistics for {metric.replace('#', '')}:")
     print(df_metric_melted[metric].describe().loc[['mean', 'std', 'min', 'max']])
     print(f"25th Percentile (Q1): {q25:.2f}")
+    print(f"50th Percentile (Q2): {q50:.2f}")
     print(f"75th Percentile (Q3): {q75:.2f}")
 
     # Histogram
@@ -639,52 +640,48 @@ print(f"Correlation between #Returning Customer and the Estimated Returning Reve
 #Calculate Metrics
 #Calculate Metrics
 
-'''
-clean up
-'''
-
-
-df_long['RET_EST_X_SHARE_RET'] = df_long['RETAINED_REV_EST'] * df_long['#SHARE_RET_REVENUE']
-
-# Multiply by 100
+#RRR
 df_long['RRR_PCT'] = df_long['#RRR'] * 100
-# Create a one-period lagged version of RRR_pct for each firm
 df_long['RRR_PCT_LAG1'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(1)
-# Create a four-period lagged version of RRR_pct for each firm
+df_long['RRR_LAG'] = df_long['RRR_PCT_LAG1'] / 100
+df_long['RRR_PCT_LAG2'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(2)
+df_long['RRR_PCT_LAG3'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(3)
 df_long['RRR_PCT_LAG4'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(4)
-
+#Acq Rate
 df_long['ACQ_RATE_PCT'] = df_long['#ACQ_RATE'] * 100
 df_long['ACQ_RATE_PCT_LAG1'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(1)
-df_long['ACQ_RATE_PCT_LAG4'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(4)   
+df_long['ACQ_RATE_PCT_LAG2'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(2)
+df_long['ACQ_RATE_PCT_LAG3'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(3)
+df_long['ACQ_RATE_PCT_LAG4'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(4)
 
-# Compute IS_SGA_EXPENSE_PCT only when SALES_REV_TURN is valid; otherwise, assign NaN
+#IS_SGA_EXPENSE_PCT
 df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
 
-#Calculate Operating Income Profit Margin
-df_long['PM_OPER_PCT'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
-df_long['PM_OPER'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) 
-
-# Calculate Revenue Growth as percentage change of SALES_REV_TURN from previous period for each firm
+#Revenue Growth 
 df_long['SALES_REV_TURN_LAG1'] = (
     df_long
       .groupby(level='FIRM')['SALES_REV_TURN']
       .shift(1)
 )
-df_long['REV_GROWTH_PCT'] = (np.log(df_long['SALES_REV_TURN'].replace(0, np.nan))- np.log(df_long['SALES_REV_TURN_LAG1'].replace(0, np.nan)))*100 # sales growth as percentage change of sales revenue from previous period for each firm
+df_long['REV_GROWTH_PCT'] = (np.log(df_long['SALES_REV_TURN'].replace(0, np.nan))- np.log(df_long['SALES_REV_TURN_LAG1'].replace(0, np.nan)))*100 
 df_long.drop(columns='SALES_REV_TURN_LAG1', inplace=True)
 
-
+#Profit Growth 
 df_long['IS_OPER_INC_LAG1'] = df_long.groupby(level='FIRM')['IS_OPER_INC'].shift(1)
 df_long['IS_OPER_INC_GROWTH_PCT'] = (
     (df_long['IS_OPER_INC'] - df_long['IS_OPER_INC_LAG1']) / 
-    df_long['IS_OPER_INC_LAG1'].replace(0, np.nan)
-) * 100
+    df_long['IS_OPER_INC_LAG1'].replace(0, np.nan)) * 100
 
-# Clean up the lag column if you don't need it
+# OI Profit Margin
+df_long['PM_OPER_PCT'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
+df_long['PM_OPER'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) 
 df_long.drop(columns='IS_OPER_INC_LAG1', inplace=True)
 
+# Other Metrics
+df_long['RET_EST_X_SHARE_RET'] = df_long['RETAINED_REV_EST'] * df_long['#SHARE_RET_REVENUE']
+df_long['NEW_REV_GROWTH'] = ((df_long['ACQ_RATE_PCT']) * (1-df_long['#SHARE_RET_REVENUE'].shift(1))).replace(0, np.nan)
 
-df_long['NEW_REV_GROWTH'] = (df_long['ACQ_RATE_PCT'] * (1-df_long['#SHARE_RET_REVENUE'])).replace(0, np.nan)
+
 
 df_long['EPR'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan))
 df_long['EPS'] = (df_long['IS_OPER_INC'] / df_long['BS_SH_OUT'].replace(0, np.nan))
@@ -692,7 +689,7 @@ df_long['EPS'] = (df_long['IS_OPER_INC'] / df_long['BS_SH_OUT'].replace(0, np.na
 #Calculate stock returns
 #Calculate stock returns
 #Calculate stock returns
-# 1) Make sure PX_LAST is numeric
+# Make sure PX_LAST is numeric
 df_long['PX_LAST'] = pd.to_numeric(df_long['PX_LAST'], errors='coerce')
 
 # 2) Compute lag‐1 prices per firm
@@ -709,12 +706,12 @@ df_long['RET_ARITH']  = np.exp(df_long['RETURN_LOG']) - 1 # decimal percentage c
 #df_long.drop(columns='PX_LAST_LAG1', inplace=True)
 
 
-# 2) Calculate risk-free 
+# Calculate risk-free 
 ### make sure RF is converted into fitting period returns decimal (e.g quarterly, monthly)
 ### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
 ### make sure RF is converted into fitting period returns (e.g quarterly, monthly)
 rf_ann_pct = df_long.xs('USBMMY3M INDEX', level='FIRM')['PX_LAST']  # annual return in percent
-conversion = 4 #for quartlery
+conversion = 4 #for quarterly
 rf = ((1 + rf_ann_pct/100)**(1/conversion) - 1) # risk free rate per period return decimal
 dates = df_long.index.get_level_values('DATE')
 df_long['RF']     = rf.reindex(dates).values
@@ -735,7 +732,7 @@ df_long['SIZE_LAG'] = size.groupby(level='FIRM').shift(1)
 btm  = (df_long['BS_TOT_ASSET'] - df_long['BS_TOT_LIAB2']) / df_long['HISTORICAL_MARKET_CAP']
 df_long['BTM_LAG'] = btm.groupby(level='FIRM').shift(1)
 df_long['BTM'] = btm
-df_long['RRR_LAG'] = df_long['RRR_pct_lag1'] / 100
+
 
 # 4) Excess return calculation
 df_long['EXCESS_RET'] = df_long['RET_ARITH'] - df_long['RF']
@@ -780,6 +777,7 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
             'mean': col_data.mean(),
             'std' : col_data.std(),
             '25% quantile': col_data.quantile(0.25),
+            '50% quantile': col_data.quantile(0.50),
             '75% quantile': col_data.quantile(0.75)
         }
     summary_df = pd.DataFrame(summary_dict).T
@@ -822,18 +820,33 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 ### Regression
 ### Regression
 ### Regression
-analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'ACQ_RATE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
-analyze_columns(['REV_GROWTH_PCT', 'RRR_pct', 'Intersection'], firm_effect=False, time_effect=False,show_plots=False)
+
+analyze_columns(['RRR_PCT', 'RRR_PCT_LAG1','RRR_PCT_LAG2','RRR_PCT_LAG3','RRR_PCT_LAG4'], firm_effect=False, time_effect=False,show_plots=True)
+#nothing
+analyze_columns(['IS_SGA_EXPENSE_PCT','ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
+#Acq rate + RRR 
+analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
+# ret revenue is significant but not new rev
 
 
-analyze_columns(['IS_OPER_INC', 'SALES_REV_TURN_EST'], firm_effect=False, time_effect=False,show_plots=True)
 
-analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=True)
+df_long['RET_REV_ACQ_LAG'] = df_long['NEW_REV_EST'].shift(1) * df_long['RRR_PCT'] / 100
+df_long['RET_REV_ACQ_LAG2'] = df_long['NEW_REV_EST'].shift(2) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100
+df_long['RET_REV_ACQ_LAG3'] = df_long['NEW_REV_EST'].shift(3) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100
+df_long['RET_REV_ACQ_LAG4'] = df_long['NEW_REV_EST'].shift(4) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100 * df_long['RRR_PCT_LAG3'] / 100
+analyze_columns(['IS_OPER_INC_GROWTH_PCT', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 
-analyze_columns(['PM_OPER', '#SHARE_RET_REVENUE'], firm_effect=True, time_effect=True,show_plots=True)
 
+analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
+#nice
+analyze_columns(['IS_OPER_INC', 'RET_REV_ACQ_LAG', 'RRR_PCT','IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
+#nice
+analyze_columns(['IS_OPER_INC', 'RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
+#nice
 
-# Assuming your dataframe is named df with columns: 'PM_OPER' and 'SHARE_RET_REVENUE'
+analyze_columns(['IS_OPER_INC','#GROWTH_MIX', 'RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
+#nice GM  not significant
+
 
 # Remove outliers in PM_OPER
 df_clean = df_long[(df_long['PM_OPER'] > -0.5) & (df_long['PM_OPER'] < 0.3)].copy()
@@ -843,7 +856,7 @@ mask = (~X.isnull().any(axis=1)) & (~np.isinf(X).any(axis=1)) & (~y.isnull()) & 
 X_clean = X[mask]
 y_clean = y[mask]
 # Add constant for intercept
-X = sm.add_constant(df_clean['#SHARE_RET_REVENUE'])
+X = sm.add_constant(df_clean[['ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1']])
 y = df_clean['PM_OPER']
 
 # Fit robust regression (HuberT)
@@ -860,7 +873,7 @@ print(ols_model.summary())
 
 
 
-analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
+
 
 '''
 new rev est is not significant check why
