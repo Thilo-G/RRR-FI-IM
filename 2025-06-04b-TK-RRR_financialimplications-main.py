@@ -654,6 +654,13 @@ df_long['ACQ_RATE_PCT_LAG2'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shi
 df_long['ACQ_RATE_PCT_LAG3'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(3)
 df_long['ACQ_RATE_PCT_LAG4'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(4)
 
+# "CLV+"
+df_long['RET_REV_ACQ_LAG'] = df_long['NEW_REV_EST'].shift(1) * df_long['RRR_PCT'] / 100
+df_long['RET_REV_ACQ_LAG2'] = df_long['NEW_REV_EST'].shift(2) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100
+df_long['RET_REV_ACQ_LAG3'] = df_long['NEW_REV_EST'].shift(3) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100
+df_long['RET_REV_ACQ_LAG4'] = df_long['NEW_REV_EST'].shift(4) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100 * df_long['RRR_PCT_LAG3'] / 100
+
+
 #IS_SGA_EXPENSE_PCT
 df_long['IS_SGA_EXPENSE_PCT'] = (df_long['IS_SGA_EXPENSE'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
 
@@ -668,9 +675,8 @@ df_long.drop(columns='SALES_REV_TURN_LAG1', inplace=True)
 
 #Profit Growth 
 df_long['IS_OPER_INC_LAG1'] = df_long.groupby(level='FIRM')['IS_OPER_INC'].shift(1)
-df_long['IS_OPER_INC_GROWTH_PCT'] = (
-    (df_long['IS_OPER_INC'] - df_long['IS_OPER_INC_LAG1']) / 
-    df_long['IS_OPER_INC_LAG1'].replace(0, np.nan)) * 100
+df_long['IS_OPER_INC_GROWTH_PCT'] = (df_long['IS_OPER_INC'] - df_long['IS_OPER_INC_LAG1']) / df_long['IS_OPER_INC_LAG1'].replace(0, np.nan) * 100
+df_long['IS_OPER_INC_GROWTH'] = df_long['IS_OPER_INC_GROWTH_PCT'] / 100
 
 # OI Profit Margin
 df_long['PM_OPER_PCT'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
@@ -821,7 +827,7 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 ### Regression
 ### Regression
 
-analyze_columns(['RRR_PCT', 'RRR_PCT_LAG1','RRR_PCT_LAG2','RRR_PCT_LAG3','RRR_PCT_LAG4'], firm_effect=False, time_effect=False,show_plots=True)
+analyze_columns(['RRR_PCT', 'RRR_PCT_LAG1','RRR_PCT_LAG2','RRR_PCT_LAG3','RRR_PCT_LAG4'], firm_effect=False, time_effect=False,show_plots=False)
 #nothing
 analyze_columns(['IS_SGA_EXPENSE_PCT','ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 #Acq rate + RRR 
@@ -830,22 +836,23 @@ analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effe
 
 
 
-df_long['RET_REV_ACQ_LAG'] = df_long['NEW_REV_EST'].shift(1) * df_long['RRR_PCT'] / 100
-df_long['RET_REV_ACQ_LAG2'] = df_long['NEW_REV_EST'].shift(2) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100
-df_long['RET_REV_ACQ_LAG3'] = df_long['NEW_REV_EST'].shift(3) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100
-df_long['RET_REV_ACQ_LAG4'] = df_long['NEW_REV_EST'].shift(4) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100 * df_long['RRR_PCT_LAG3'] / 100
-analyze_columns(['IS_OPER_INC_GROWTH_PCT', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 
+
+analyze_columns(['IS_OPER_INC_GROWTH_PCT', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RET_REV_ACQ_LAG', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
+#nothing
 
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
 #nice
 analyze_columns(['IS_OPER_INC', 'RET_REV_ACQ_LAG', 'RRR_PCT','IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
 #nice
-analyze_columns(['IS_OPER_INC', 'RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['IS_OPER_INC', 'ACQ_RATE_PCT','RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
 #nice
 
 analyze_columns(['IS_OPER_INC','#GROWTH_MIX', 'RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
 #nice GM  not significant
+
+analyze_columns(['PM_OPER', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['IS_OPER_INC', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 
 
 # Remove outliers in PM_OPER
@@ -924,6 +931,330 @@ why do I get those results?
 '''
 
 
+
+
+#==============================================================================
+# 7. Cash Flow Forecasting & Uncertainty Analysis (REVISED - SINGLE REGRESSION)
+#==============================================================================
+
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+
+
+# --- Helper: safe SARIMA forecast ---
+def safe_sarima_forecast(y_train):
+    """
+    Fit SARIMA(1,1,1) safely and return (forecast_value, fallback_flag).
+    """
+    fallback_flag = 0
+    y_pred = np.nan
+
+    y_train = pd.to_numeric(y_train, errors='coerce').dropna()
+
+    if len(y_train) < 6 or np.nanvar(y_train) < 1e-8:
+        # Too few observations or no variance → fallback
+        return (y_train.iloc[-1] if len(y_train) else np.nan, 1)
+
+    try:
+        model = SARIMAX(
+            y_train,
+            order=(1, 1, 1),
+            seasonal_order=(0, 0, 0, 0),
+            enforce_stationarity=False,
+            enforce_invertibility=False
+        )
+        res = model.fit(disp=False)
+        y_pred = res.forecast(steps=1).iloc[0]
+    except Exception as e:
+        print(f" SARIMA failed on series (last={y_train.iloc[-1]}): {e}")
+        fallback_flag = 2
+        y_pred = y_train.iloc[-1]
+
+    return y_pred, fallback_flag
+
+
+# --- Helper: last valid split ---
+def last_valid_split(series):
+    """
+    Split a time series into training (all but last non-NaN) and test (last non-NaN).
+    Returns (y_train, y_test) or (None, None) if not enough data.
+    """
+    s = pd.to_numeric(series, errors='coerce').dropna()
+    if len(s) < 6:
+        return None, None
+    return s.iloc[:-1], s.iloc[-1]
+
+
+# --- Main Function ---
+def firm_forecast_summary(group):
+    group = group.sort_values('DATE').copy()
+
+    # Ensure numeric columns
+    y_inc = pd.to_numeric(group['IS_OPER_INC'], errors='coerce')
+    y_pm  = pd.to_numeric(group['PM_OPER'], errors='coerce')
+    y_rg  = pd.to_numeric(group.get('#REVENUE_GROWTH', np.nan), errors='coerce')
+    y_cfg = pd.to_numeric(group.get('IS_OPER_INC_GROWTH', np.nan), errors='coerce')
+    rrr   = pd.to_numeric(group['RRR_PCT'], errors='coerce')
+    acq   = pd.to_numeric(group['ACQ_RATE_PCT'], errors='coerce')
+
+    # --- Safe splits ---
+    splits = {var: last_valid_split(series) for var, series in {
+        'CF': y_inc, 'PM': y_pm, 'RG': y_rg, 'CFG': y_cfg
+    }.items()}
+
+    # Initialize forecast and uncertainty containers
+    forecasts = {}
+    uncertainties = {}
+
+    for key, (y_train, y_test) in splits.items():
+        if y_train is None or y_test is None:
+            forecasts[key] = np.nan
+            uncertainties[key] = np.nan
+        else:
+            y_pred, _ = safe_sarima_forecast(y_train)
+            forecasts[key] = y_pred
+            uncertainties[key] = (y_test - y_pred) ** 2
+
+    # --- RRR / Acquisition metrics from training period ---
+    rrr_clean = rrr.dropna()
+    acq_clean = acq.dropna()
+
+    rrr_last = rrr_clean.iloc[-2] if len(rrr_clean) >= 2 else np.nan
+    acq_last = acq_clean.iloc[-2] if len(acq_clean) >= 2 else np.nan
+    rrr_vol  = np.nanstd(rrr_clean)
+    acq_vol  = np.nanstd(acq_clean)
+
+    # --- Volatilities ---
+    rg_vol   = np.nanstd(splits['RG'][0]) if splits['RG'][0] is not None else np.nan
+    cfg_vol  = np.nanstd(splits['CFG'][0]) if splits['CFG'][0] is not None else np.nan
+    pm_vol   = np.nanstd(splits['PM'][0]) if splits['PM'][0] is not None else np.nan
+
+    # --- Return structured result ---
+    result = {
+        'FIRM': group['FIRM'].iloc[0],
+        'CF_FORECAST_LAST': forecasts['CF'],
+        'PM_FORECAST_LAST': forecasts['PM'],
+        'RG_FORECAST_LAST': forecasts['RG'],
+        'CF_GROWTH_FORECAST_LAST': forecasts['CFG'],
+        'CF_UNCERTAINTY': uncertainties['CF'],
+        'PM_UNCERTAINTY': uncertainties['PM'],
+        'RG_UNCERTAINTY': uncertainties['RG'],
+        'CF_GROWTH_UNCERTAINTY': uncertainties['CFG'],
+        'RRR_LAST': rrr_last,
+        'ACQ_LAST': acq_last,
+        'RRR_VOL': rrr_vol,
+        'ACQ_VOL': acq_vol,
+        'RG_VOL': rg_vol,
+        'CF_GROWTH_VOL': cfg_vol,
+        'PM_VOL': pm_vol
+    }
+
+    return pd.Series(result, name=group['FIRM'].iloc[0])
+
+
+# --- Apply across firms ---
+df_forecast_summary = (
+    df_long.reset_index()
+           .groupby('FIRM', group_keys=False)
+           .apply(firm_forecast_summary)
+           .reset_index(drop=True)
+)
+
+print("✅ Forecast summary created successfully.")
+print(df_forecast_summary.head())
+
+
+
+
+
+# --- Distribution summary for uncertainty measures ---
+
+summary_uncertainty = pd.DataFrame({
+    'Variable': ['CF_UNCERTAINTY', 'PM_UNCERTAINTY', 'RG_UNCERTAINTY', 'CF_GROWTH_UNCERTAINTY', 'RRR_VOL', 'ACQ_VOL', 'RG_VOL'],
+    'Mean': [
+        df_forecast_summary['CF_UNCERTAINTY'].mean(skipna=True),
+        df_forecast_summary['PM_UNCERTAINTY'].mean(skipna=True),
+        df_forecast_summary['RG_UNCERTAINTY'].mean(skipna=True),
+        df_forecast_summary['CF_GROWTH_UNCERTAINTY'].mean(skipna=True),
+        df_forecast_summary['RRR_VOL'].mean(skipna=True),
+        df_forecast_summary['ACQ_VOL'].mean(skipna=True),
+        df_forecast_summary['RG_VOL'].mean(skipna=True)
+    ],
+    'Median': [
+        df_forecast_summary['CF_UNCERTAINTY'].median(skipna=True),
+        df_forecast_summary['PM_UNCERTAINTY'].median(skipna=True),
+        df_forecast_summary['RG_UNCERTAINTY'].median(skipna=True),
+        df_forecast_summary['CF_GROWTH_UNCERTAINTY'].median(skipna=True),
+        df_forecast_summary['RRR_VOL'].median(skipna=True),
+        df_forecast_summary['ACQ_VOL'].median(skipna=True),
+        df_forecast_summary['RG_VOL'].median(skipna=True)
+    ],
+    'StdDev': [
+        df_forecast_summary['CF_UNCERTAINTY'].std(skipna=True),
+        df_forecast_summary['PM_UNCERTAINTY'].std(skipna=True),
+        df_forecast_summary['RG_UNCERTAINTY'].std(skipna=True),
+        df_forecast_summary['CF_GROWTH_UNCERTAINTY'].std(skipna=True),
+        df_forecast_summary['RRR_VOL'].std(skipna=True),
+        df_forecast_summary['ACQ_VOL'].std(skipna=True),
+        df_forecast_summary['RG_VOL'].std(skipna=True)
+    ],
+    'Min': [
+        df_forecast_summary['CF_UNCERTAINTY'].min(skipna=True),
+        df_forecast_summary['PM_UNCERTAINTY'].min(skipna=True),
+        df_forecast_summary['RG_UNCERTAINTY'].min(skipna=True),
+        df_forecast_summary['CF_GROWTH_UNCERTAINTY'].min(skipna=True),
+        df_forecast_summary['RRR_VOL'].min(skipna=True),
+        df_forecast_summary['ACQ_VOL'].min(skipna=True),
+        df_forecast_summary['RG_VOL'].min(skipna=True)
+    ],
+    'Max': [
+        df_forecast_summary['CF_UNCERTAINTY'].max(skipna=True),
+        df_forecast_summary['PM_UNCERTAINTY'].max(skipna=True),
+        df_forecast_summary['RG_UNCERTAINTY'].max(skipna=True),
+        df_forecast_summary['CF_GROWTH_UNCERTAINTY'].max(skipna=True),
+        df_forecast_summary['RRR_VOL'].max(skipna=True),
+        df_forecast_summary['ACQ_VOL'].max(skipna=True),
+        df_forecast_summary['RG_VOL'].max(skipna=True)
+    ]
+})
+
+print("📊 Forecast Uncertainty Summary:")
+print(summary_uncertainty.round(4))
+
+for col in ['CF_UNCERTAINTY', 'PM_UNCERTAINTY', 'RG_UNCERTAINTY']:
+    series = df_forecast_summary[col].dropna()
+
+    # Winsorize for visualization (5th–95th percentile)
+    lower = series.quantile(0.05)
+    upper = series.quantile(0.95)
+    data_filtered = series[(series >= lower) & (series <= upper)]
+
+    # Create histogram
+    plt.figure(figsize=(8, 5))
+    plt.hist(data_filtered, bins=30, edgecolor='black', alpha=0.7)
+    plt.xlabel(col)
+    plt.ylabel('Frequency')
+    plt.title(f'Histogram of {col} (Winsorized 5–95%)')
+    plt.grid(axis='y', linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.show()
+
+uncertainty_cols = ['CF_UNCERTAINTY', 'PM_UNCERTAINTY', 'RG_UNCERTAINTY', 'CF_GROWTH_UNCERTAINTY']
+
+na_summary = (
+    df_forecast_summary[uncertainty_cols]
+    .isna()
+    .sum()
+    .reset_index()
+    .rename(columns={'index': 'Variable', 0: 'NaN_Count'})
+)
+
+# Also show % of missing values
+na_summary['NaN_%'] = (
+    na_summary['NaN_Count'] / len(df_forecast_summary) * 100
+).round(2)
+
+print("📊 Missing Value Summary (per Uncertainty Variable):")
+print(na_summary)
+
+#almost 40% missing values-> why? CF & PM around 9% missing; 3 times forecasting failure (~2%)
+'''
+check in more detail
+'''
+
+import statsmodels.formula.api as smf
+
+# Drop rows with missing relevant data
+df_reg = df_forecast_summary.dropna(
+    subset=['RG_UNCERTAINTY', 'RRR_VOL', 'RRR_LAST']
+).copy()
+
+# Optionally winsorize extreme uncertainty values for stability
+from scipy.stats.mstats import winsorize
+df_reg['RG_UNCERTAINTY_W'] = winsorize(df_reg['RG_UNCERTAINTY'], limits=[0.01, 0.01])
+
+# --- Run regression ---
+model = smf.ols(
+    formula="RG_UNCERTAINTY_W ~ RRR_VOL + RRR_LAST",
+    data=df_reg
+).fit(cov_type='HC3')
+
+print(model.summary())
+
+
+'''
+new plan: repeat steps but with revenue data; new and retained revenue estimates
+'''
+def firm_forecast_summary_customers(group):
+    group = group.sort_values('DATE').copy()
+
+    # Ensure numeric series
+    y_new = pd.to_numeric(group['#NEW_CUSTOMERS'], errors='coerce')
+    y_ret = pd.to_numeric(group['#RETURNING_CUSTOMERS'], errors='coerce')
+    acq   = pd.to_numeric(group['ACQ_RATE_PCT'], errors='coerce')
+    rrr   = pd.to_numeric(group['RRR_PCT'], errors='coerce')
+
+    # --- Safe splits ---
+    splits = {var: last_valid_split(series) for var, series in {
+        'NEW': y_new, 'RET': y_ret, 'ACQ': acq, 'RRR': rrr
+    }.items()}
+
+    # --- Forecasts & uncertainties ---
+    forecasts = {}
+    uncertainties = {}
+
+    for key, (y_train, y_test) in splits.items():
+        if y_train is None or y_test is None:
+            forecasts[key] = np.nan
+            uncertainties[key] = np.nan
+        else:
+            y_pred, _ = safe_sarima_forecast(y_train)
+            forecasts[key] = y_pred
+            uncertainties[key] = (y_test - y_pred) ** 2
+
+    # --- Volatilities ---
+    acq_vol = np.nanstd(acq)
+    rrr_vol = np.nanstd(rrr)
+
+    # --- Return structured output ---
+    result = {
+        'FIRM': group['FIRM'].iloc[0],
+        'NEW_FORECAST_LAST': forecasts['NEW'],
+        'RET_FORECAST_LAST': forecasts['RET'],
+        'ACQ_FORECAST_LAST': forecasts['ACQ'],
+        'RRR_FORECAST_LAST': forecasts['RRR'],
+        'NEW_UNCERTAINTY': uncertainties['NEW'],
+        'RET_UNCERTAINTY': uncertainties['RET'],
+        'ACQ_UNCERTAINTY': uncertainties['ACQ'],
+        'RRR_UNCERTAINTY': uncertainties['RRR'],
+        'ACQ_VOL': acq_vol,
+        'RRR_VOL': rrr_vol,
+        'ACQ_LAST': acq.iloc[-2] if len(acq.dropna()) >= 2 else np.nan,
+        'RRR_LAST': rrr.iloc[-2] if len(rrr.dropna()) >= 2 else np.nan
+    }
+
+    return pd.Series(result, name=group['FIRM'].iloc[0])
+
+
+# --- Apply across firms ---
+df_forecast_summary = (
+    df_long.reset_index()
+           .groupby('FIRM', group_keys=False)
+           .apply(firm_forecast_summary_customers)
+           .reset_index(drop=True)
+)
+
+print("✅ Forecast summary created successfully.")
+print(df_forecast_summary.head())
+
+
+# --- Summary stats ---
+summary_uncertainty = df_forecast_summary[['NEW_UNCERTAINTY', 'RET_UNCERTAINTY',
+                                           'ACQ_UNCERTAINTY', 'RRR_UNCERTAINTY',
+                                           'ACQ_VOL', 'RRR_VOL']].describe().T
+
+print("\n📊 Forecast Uncertainty and Volatility Summary:")
+print(summary_uncertainty.round(4))
 #==============================================================================
 # 6. Portfolio Analysis
 #==============================================================================
