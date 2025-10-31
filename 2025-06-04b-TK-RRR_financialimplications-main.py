@@ -681,7 +681,7 @@ df_long['IS_OPER_INC_GROWTH'] = df_long['IS_OPER_INC_GROWTH_PCT'] / 100
 # OI Profit Margin
 df_long['PM_OPER_PCT'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) * 100
 df_long['PM_OPER'] = (df_long['IS_OPER_INC'] / df_long['SALES_REV_TURN'].replace(0, np.nan)) 
-df_long.drop(columns='IS_OPER_INC_LAG1', inplace=True)
+
 
 # Other Metrics
 df_long['RET_EST_X_SHARE_RET'] = df_long['RETAINED_REV_EST'] * df_long['#SHARE_RET_REVENUE']
@@ -855,24 +855,6 @@ analyze_columns(['PM_OPER', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_
 analyze_columns(['IS_OPER_INC', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 
 
-# Remove outliers in PM_OPER
-df_clean = df_long[(df_long['PM_OPER'] > -0.5) & (df_long['PM_OPER'] < 0.3)].copy()
-df_clean = df_clean.astype(float)
-# Remove rows with any NaNs or infs
-mask = (~X.isnull().any(axis=1)) & (~np.isinf(X).any(axis=1)) & (~y.isnull()) & (~np.isinf(y))
-X_clean = X[mask]
-y_clean = y[mask]
-# Add constant for intercept
-X = sm.add_constant(df_clean[['ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1']])
-y = df_clean['PM_OPER']
-
-# Fit robust regression (HuberT)
-rlm_model = sm.RLM(y_clean, X_clean, M=sm.robust.norms.HuberT())
-rlm_results = rlm_model.fit()
-print(rlm_results.summary())
-
-ols_model = sm.OLS(y_clean, X_clean).fit(cov_type='cluster')
-print(ols_model.summary())
 
 
 
@@ -922,7 +904,7 @@ analyze_columns(['EXCESS_RET', 'MKT_RF_LAG', 'SIZE_LAG', 'BTM_LAG','RRR_LAG'], f
 to predict or to explain?
 '''
 #explain
-analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR'], firm_effect=False, time_effect=False, show_plots=True)
+analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','#RRR'], firm_effect=False, time_effect=False, show_plots=False)
 analyze_columns(['EXCESS_RET', 'MKT_RF', 'SIZE', 'BTM','RRR_LAG'], firm_effect=True, time_effect=False, show_plots=False)
 
 '''
@@ -931,11 +913,225 @@ why do I get those results?
 '''
 
 
+#Lasso regression for variable selection
+from sklearn.linear_model import LassoCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+
+
+# --- Step 1: Define variables ---
+y_var = 'EXCESS_RET'
+x_vars = [
+    'MKT_RF','SIZE','BTM', 'RRR_PCT_LAG1','IS_OPER_INC','IS_OPER_INC_LAG1',
+    'RET_REV_ACQ_LAG','RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4',
+    'RRR_PCT_LAG4','RRR_PCT','ACQ_RATE_PCT',#'ACQ_RATE_PCT_LAG1',#
+    'ACQ_RATE_PCT_LAG4'
+]
+
+# --- Step 2: Prepare data ---
+df_panel = df_long.reset_index()[['FIRM', 'DATE', y_var] + x_vars].dropna().copy()
+
+# --- Step 3: Demean by firm (remove firm fixed effectsby commenting out) ---
+#for col in [y_var] + x_vars:
+#    df_panel[col] = df_panel.groupby('FIRM')[col].transform(lambda x: x - x.mean())
+
+# --- Step 4: Define X and y ---
+X = df_panel[x_vars].values
+y = df_panel[y_var].values
+
+# --- Step 5: Build LassoCV model ---
+lasso_pipeline = Pipeline([
+    ('scaler', StandardScaler()),   # normalize predictors
+    ('lasso', LassoCV(cv=5, random_state=42, n_alphas=100, max_iter=20000))
+])
+
+# --- Step 6: Fit model ---
+lasso_pipeline.fit(X, y)
+
+lasso = lasso_pipeline.named_steps['lasso']
+
+# --- Step 7: Display results ---
+print("✅ Fixed-Effects Lasso Regression (Firm Demeaned Data)")
+print(f"Optimal alpha (λ): {lasso.alpha_:.6f}")
+print(f"R² (training): {lasso_pipeline.score(X, y):.4f}\n")
+
+coef_df = pd.DataFrame({
+    'Variable': x_vars,
+    'Coefficient': lasso.coef_
+})
+coef_df['AbsCoef'] = coef_df['Coefficient'].abs()
+coef_df = coef_df.sort_values('AbsCoef', ascending=False)
+
+print("Top predictors by absolute coefficient:")
+print(coef_df[['Variable', 'Coefficient']].head(10))
+
+for col in ['IS_OPER_INC', 'EXCESS_RET']:
+    low, high = df_long[col].quantile([0.01, 0.99])
+    df_long[col] = df_long[col].clip(lower=low, upper=high)
+
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler().fit(df_panel[x_vars])
+std_effects = lasso.coef_ * scaler.scale_ / np.std(y)
+print(std_effects)
+
+#### XGBoost
+from xgboost import XGBRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- Step 1: Define y and X variables ---
+y_var = 'EXCESS_RET'
+x_vars = [
+    'MKT_RF','SIZE','BTM','RRR_PCT_LAG1','IS_OPER_INC','IS_OPER_INC_LAG1',
+    'RET_REV_ACQ_LAG','RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4',
+    'RRR_PCT_LAG4','RRR_PCT','ACQ_RATE_PCT','ACQ_RATE_PCT_LAG1','ACQ_RATE_PCT_LAG4'
+]
+
+# --- Step 2: Prepare data (drop missing) ---
+df_model = df_long.reset_index()[['FIRM', 'DATE', y_var] + x_vars].dropna().copy()
+
+# Optional: Clip extreme values
+for col in ['IS_OPER_INC', 'EXCESS_RET']:
+    low, high = df_model[col].quantile([0.01, 0.99])
+    df_model[col] = df_model[col].clip(lower=low, upper=high)
+
+# --- Step 3: Define X and y ---
+X = df_model[x_vars].values
+y = df_model[y_var].values
+
+# --- Step 4: Split train/test (or use full data for in-sample performance) ---
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# --- Step 5: Scale features (recommended for financial variables) ---
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# --- Step 6: Fit XGBoost regressor ---
+xgb = XGBRegressor(
+    objective='reg:squarederror',
+    n_estimators=100,
+    max_depth=3,
+    learning_rate=0.1,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    random_state=42
+)
+xgb.fit(X_train_scaled, y_train)
+
+# --- Step 7: Evaluate performance ---
+y_pred_train = xgb.predict(X_train_scaled)
+y_pred_test = xgb.predict(X_test_scaled)
+
+print("✅ XGBoost Model Performance")
+print(f"R² (train): {r2_score(y_train, y_pred_train):.4f}")
+print(f"R² (test):  {r2_score(y_test, y_pred_test):.4f}")
+
+# --- Step 8: Feature importance ---
+importances = xgb.feature_importances_
+feat_df = pd.DataFrame({
+    'Variable': x_vars,
+    'Importance': importances
+}).sort_values('Importance', ascending=False)
+
+print("\nTop Predictors by Importance:")
+print(feat_df.head(10))
+
+# --- Step 9: Plot importance ---
+plt.figure(figsize=(8, 5))
+plt.barh(feat_df['Variable'], feat_df['Importance'])
+plt.xlabel("Feature Importance")
+plt.title("XGBoost Feature Importance")
+plt.gca().invert_yaxis()
+plt.tight_layout()
+plt.show()
+
+#explain features such as interactions
+
+explainer = shap.Explainer(xgb)
+shap_values = explainer(X_train_scaled)
+
+shap.summary_plot(shap_values, X_train_scaled, feature_names=x_vars)
+
+# Plot interaction between ACQ_RATE and RRR
+#shap.plots.scatter(shap_values[:, "ACQ_RATE"], color=shap_values[:, "RRR"])
+
+# Get SHAP interaction values (expensive computation!)
+interaction_vals = shap.Explainer(xgb, X_train_scaled).shap_interaction_values(X_train_scaled)
+
+# interaction_vals[i][j] gives interaction between variable i and j
+# Sum over samples to get importance
+interaction_importance = np.abs(interaction_vals).mean(axis=0)
+
+# Create matrix of variable names
+import pandas as pd
+interaction_df = pd.DataFrame(interaction_importance, index=x_vars, columns=x_vars)
+
+# Show top 10 strongest interaction pairs
+interaction_df.where(np.triu(np.ones(interaction_df.shape), 1).astype(bool)).stack().sort_values(ascending=False).head(10)
 
 
 #==============================================================================
 # 7. Cash Flow Forecasting & Uncertainty Analysis (REVISED - SINGLE REGRESSION)
 #==============================================================================
+from sklearn.linear_model import LassoCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+import numpy as np
+import pandas as pd
+
+# --- Prepare data ---
+X_vars = ['RRR_VOL', 'ACQ_VOL', 'RRR_LAST', 'ACQ_LAST']
+y_var = 'CF_GROWTH_UNCERTAINTY'
+
+# Drop missing rows
+df_lasso = df_forecast_summary.dropna(subset=X_vars + [y_var]).copy()
+
+# Define X and y
+X = df_lasso[X_vars].values
+y = df_lasso[y_var].values
+
+# --- Build LassoCV pipeline ---
+lasso_pipeline = Pipeline([
+    ('scaler', StandardScaler()),   # standardize predictors
+    ('lasso', LassoCV(cv=5, random_state=42, n_alphas=100, max_iter=10000))
+])
+
+# --- Fit model ---
+lasso_pipeline.fit(X, y)
+
+# Extract trained Lasso model
+lasso = lasso_pipeline.named_steps['lasso']
+
+# --- Results ---
+print("✅ Lasso Regression Results")
+print("----------------------------------")
+print(f"Optimal alpha (λ): {lasso.alpha_:.6f}")
+print(f"R² (training): {lasso.score(X, y):.4f}")
+print()
+
+# Coefficient summary
+coef_df = pd.DataFrame({
+    'Variable': X_vars,
+    'Coefficient': lasso.coef_,
+})
+print(coef_df)
+
+# Intercept
+print(f"\nIntercept: {lasso.intercept_:.4f}")
+
+# --- Identify which variables matter ---
+important_vars = coef_df[coef_df['Coefficient'].abs() > 1e-6]
+print("\nVariables retained by Lasso:")
+print(important_vars if not important_vars.empty else "None (all shrunk to zero)")
+
+
+
+
 
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
