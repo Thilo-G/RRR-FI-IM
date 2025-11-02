@@ -1088,6 +1088,7 @@ import pandas as pd
 X_vars = ['RRR_VOL', 'ACQ_VOL', 'RRR_LAST', 'ACQ_LAST']
 y_var = 'CF_GROWTH_UNCERTAINTY'
 
+
 # Drop missing rows
 df_lasso = df_forecast_summary.dropna(subset=X_vars + [y_var]).copy()
 
@@ -1138,47 +1139,80 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 
 # --- Helper: safe SARIMA forecast ---
+
+# Add global counter dictionary at the top of your forecast section
+SARIMA_STATS = {
+    'total_forecasts': 0,
+    'success': 0,
+    'too_few_obs': 0,
+    'model_failed': 0
+}
+
+
 def safe_sarima_forecast(y_train):
     """
-    Fit SARIMA(1,1,1) safely and return (forecast_value, fallback_flag).
+    Fit SARIMA safely and return (forecast_value, fallback_flag).
+    fallback_flag: 0=success, 1=too_few_obs, 2=model_failed
     """
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+    import warnings
+    
+    global SARIMA_STATS
+    SARIMA_STATS['total_forecasts'] += 1
+    
     fallback_flag = 0
     y_pred = np.nan
 
     y_train = pd.to_numeric(y_train, errors='coerce').dropna()
 
     if len(y_train) < 6 or np.nanvar(y_train) < 1e-8:
-        # Too few observations or no variance → fallback
-        return (y_train.iloc[-1] if len(y_train) else np.nan, 1)
+        fallback_flag = 1
+        SARIMA_STATS['too_few_obs'] += 1
+        return (y_train.iloc[-1] if len(y_train) > 0 else np.nan, fallback_flag)
 
     try:
-        model = SARIMAX(
-            y_train,
-            order=(1, 1, 1),
-            seasonal_order=(0, 0, 0, 0),
-            enforce_stationarity=False,
-            enforce_invertibility=False
-        )
-        res = model.fit(disp=False)
-        y_pred = res.forecast(steps=1).iloc[0]
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            
+            model = SARIMAX(
+                y_train,
+                order=(1, 1, 1),
+                seasonal_order=(1, 0, 1, 4),
+                enforce_stationarity=False,
+                enforce_invertibility=False
+            )
+            res = model.fit(disp=False, maxiter=50)
+            forecast = res.forecast(steps=1)
+            
+            y_pred = float(forecast.iloc[0]) if hasattr(forecast, 'iloc') else float(forecast)
+            SARIMA_STATS['success'] += 1
+            
     except Exception as e:
-        print(f" SARIMA failed on series (last={y_train.iloc[-1]}): {e}")
         fallback_flag = 2
-        y_pred = y_train.iloc[-1]
+        SARIMA_STATS['model_failed'] += 1
+        y_pred = float(y_train.iloc[-1]) if len(y_train) > 0 else np.nan
 
     return y_pred, fallback_flag
 
 
 # --- Helper: last valid split ---
-def last_valid_split(series):
+def last_valid_split(series, dates=None):
     """
-    Split a time series into training (all but last non-NaN) and test (last non-NaN).
-    Returns (y_train, y_test) or (None, None) if not enough data.
+    Split into train/test, returning SCALAR test value (not Series).
+    Returns (y_train_series, y_test_scalar) or (None, None).
     """
     s = pd.to_numeric(series, errors='coerce').dropna()
+    
     if len(s) < 6:
         return None, None
-    return s.iloc[:-1], s.iloc[-1]
+    
+    # If dates provided, align
+    if dates is not None and len(dates) == len(series):
+        valid_dates = pd.to_datetime(dates[s.index])
+        s.index = valid_dates
+    
+    # Return: (training series, scalar test value)
+    return s.iloc[:-1], float(s.iloc[-1])
 
 
 # --- Main Function ---
@@ -1209,7 +1243,14 @@ def firm_forecast_summary(group):
         else:
             y_pred, _ = safe_sarima_forecast(y_train)
             forecasts[key] = y_pred
-            uncertainties[key] = (y_test - y_pred) ** 2
+
+
+            # ABSOLUTE PERCENTAGE ERROR (APE)
+            # Formula: |Actual - Forecast| / |Actual| * 100
+            if y_test != 0:
+                uncertainties[key] = (abs(y_test - y_pred) / abs(y_test)) * 100
+            else:
+                uncertainties[key] = np.nan  # Can't divide by zero
 
     # --- RRR / Acquisition metrics from training period ---
     rrr_clean = rrr.dropna()
@@ -1248,16 +1289,82 @@ def firm_forecast_summary(group):
     return pd.Series(result, name=group['FIRM'].iloc[0])
 
 
-# --- Apply across firms ---
+print("\n=== Generating forecast summary (this may take a few minutes) ===")
+print(f"Processing {df_long.index.get_level_values('FIRM').nunique()} firms...")
+
+# Apply the function to each firm
 df_forecast_summary = (
     df_long.reset_index()
-           .groupby('FIRM', group_keys=False)
-           .apply(firm_forecast_summary)
-           .reset_index(drop=True)
+    .groupby('FIRM', group_keys=False)
+    .apply(firm_forecast_summary)
+    .reset_index(drop=True)
 )
 
 print("✅ Forecast summary created successfully.")
-print(df_forecast_summary.head())
+print(f"\nShape: {df_forecast_summary.shape}")
+print(f"Columns: {list(df_forecast_summary.columns)}")
+print("\nFirst few rows:")
+print(df_forecast_summary.head(5))
+
+
+# --- Print Quartiles for Each Metric ---
+# Select the uncertainty columns
+from scipy.stats.mstats import winsorize
+uncertainty_cols = ['PM_UNCERTAINTY', 'RG_UNCERTAINTY', 'CF_GROWTH_UNCERTAINTY']
+# Prepare data for plotting (melt to long format)
+df_plot = df_forecast_summary[uncertainty_cols].melt(
+    var_name='Uncertainty_Type', 
+    value_name='APE_Percentage'
+)
+
+# Remove NaN values
+df_plot = df_plot.dropna()
+
+# --- Summary Statistics per Uncertainty Type ---
+print("\n=== Summary Statistics by Uncertainty Type ===")
+summary_by_type = df_plot.groupby('Uncertainty_Type')['APE_Percentage'].describe()
+print(summary_by_type.round(2))
+
+# --- Boxplot WITH Winsorization (FIXED) ---
+print("\n=== Creating Boxplot (Winsorized for Display) ===")
+
+# Create a COPY and drop NaNs FIRST, then winsorize
+df_plot_winsorized = pd.DataFrame()
+
+for col in uncertainty_cols:
+    # Drop NaNs for this column
+    clean_data = df_forecast_summary[col].dropna()
+    
+    if len(clean_data) > 0:
+        # Winsorize the clean data
+        winsorized_values = winsorize(clean_data.values, limits=[0.00, 0.1])
+        
+        # Create a temporary dataframe with the winsorized values
+        temp_df = pd.DataFrame({
+            'Uncertainty_Type': col,
+            'APE_Percentage': winsorized_values
+        })
+        
+        df_plot_winsorized = pd.concat([df_plot_winsorized, temp_df], ignore_index=True)
+
+# Create winsorized boxplot
+plt.figure(figsize=(12, 6))
+sns.boxplot(data=df_plot_winsorized, x='Uncertainty_Type', y='APE_Percentage', palette='Set3')
+
+plt.title('Distribution of Forecast Errors (Winsorized at 90%)', fontsize=14, fontweight='bold')
+plt.xlabel('Forecast Uncertainty Metric', fontsize=12)
+plt.ylabel('Absolute Percentage Error (%) - Winsorized', fontsize=12)
+plt.xticks(rotation=45, ha='right')
+plt.grid(axis='y', linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+
+# Check for any issues
+print(f"\n=== Data Quality Check ===")
+print(f"Total firms: {len(df_forecast_summary)}")
+print(f"Firms with valid CF_UNCERTAINTY: {df_forecast_summary['CF_UNCERTAINTY'].notna().sum()}")
+print(f"Firms with valid RRR_VOL: {df_forecast_summary['RRR_VOL'].notna().sum()}")
 
 
 
@@ -1317,23 +1424,6 @@ summary_uncertainty = pd.DataFrame({
 print("📊 Forecast Uncertainty Summary:")
 print(summary_uncertainty.round(4))
 
-for col in ['CF_UNCERTAINTY', 'PM_UNCERTAINTY', 'RG_UNCERTAINTY']:
-    series = df_forecast_summary[col].dropna()
-
-    # Winsorize for visualization (5th–95th percentile)
-    lower = series.quantile(0.05)
-    upper = series.quantile(0.95)
-    data_filtered = series[(series >= lower) & (series <= upper)]
-
-    # Create histogram
-    plt.figure(figsize=(8, 5))
-    plt.hist(data_filtered, bins=30, edgecolor='black', alpha=0.7)
-    plt.xlabel(col)
-    plt.ylabel('Frequency')
-    plt.title(f'Histogram of {col} (Winsorized 5–95%)')
-    plt.grid(axis='y', linestyle='--', alpha=0.6)
-    plt.tight_layout()
-    plt.show()
 
 uncertainty_cols = ['CF_UNCERTAINTY', 'PM_UNCERTAINTY', 'RG_UNCERTAINTY', 'CF_GROWTH_UNCERTAINTY']
 
@@ -1353,10 +1443,7 @@ na_summary['NaN_%'] = (
 print("📊 Missing Value Summary (per Uncertainty Variable):")
 print(na_summary)
 
-#almost 40% missing values-> why? CF & PM around 9% missing; 3 times forecasting failure (~2%)
-'''
-check in more detail
-'''
+
 
 import statsmodels.formula.api as smf
 
@@ -1382,7 +1469,17 @@ print(model.summary())
 new plan: repeat steps but with revenue data; new and retained revenue estimates
 '''
 def firm_forecast_summary_customers(group):
+    """
+    Forecast customers & customer metrics per firm.
+    Returns a Series (NOT DataFrame) with scalar values.
+    """
     group = group.sort_values('DATE').copy()
+    
+    # Get firm name once
+    firm_name = group['FIRM'].iloc[0]
+    
+    # Dates (for potential alignment, though we're now returning scalars)
+    dates = pd.to_datetime(group['DATE'])
 
     # Ensure numeric series
     y_new = pd.to_numeric(group['#NEW_CUSTOMERS'], errors='coerce')
@@ -1390,31 +1487,43 @@ def firm_forecast_summary_customers(group):
     acq   = pd.to_numeric(group['ACQ_RATE_PCT'], errors='coerce')
     rrr   = pd.to_numeric(group['RRR_PCT'], errors='coerce')
 
-    # --- Safe splits ---
-    splits = {var: last_valid_split(series) for var, series in {
-        'NEW': y_new, 'RET': y_ret, 'ACQ': acq, 'RRR': rrr
-    }.items()}
+    # --- Safe splits (now returns scalar test values) ---
+    splits = {
+        'NEW': last_valid_split(y_new, dates),
+        'RET': last_valid_split(y_ret, dates),
+        'ACQ': last_valid_split(acq, dates),
+        'RRR': last_valid_split(rrr, dates)
+    }
 
-    # --- Forecasts & uncertainties ---
+    # --- Forecasts & uncertainties (all scalars now) ---
     forecasts = {}
     uncertainties = {}
 
     for key, (y_train, y_test) in splits.items():
-        if y_train is None or y_test is None:
+        if y_train is None or y_test is None or pd.isna(y_test):
             forecasts[key] = np.nan
             uncertainties[key] = np.nan
         else:
-            y_pred, _ = safe_sarima_forecast(y_train)
+            y_pred, _ = safe_sarima_forecast(y_train)  # returns scalar
             forecasts[key] = y_pred
-            uncertainties[key] = (y_test - y_pred) ** 2
 
-    # --- Volatilities ---
-    acq_vol = np.nanstd(acq)
-    rrr_vol = np.nanstd(rrr)
+            # ABSOLUTE PERCENTAGE ERROR
+            if y_test != 0:
+                uncertainties[key] = (abs(y_test - y_pred) / abs(y_test)) * 100
+            else:
+                uncertainties[key] = np.nan     
 
-    # --- Return structured output ---
-    result = {
-        'FIRM': group['FIRM'].iloc[0],
+    # --- Volatilities (scalars) ---
+    acq_vol = float(np.nanstd(acq)) if len(acq.dropna()) > 1 else np.nan
+    rrr_vol = float(np.nanstd(rrr)) if len(rrr.dropna()) > 1 else np.nan
+
+    # --- Last values (scalars) ---
+    acq_last = float(acq.iloc[-2]) if len(acq.dropna()) >= 2 else np.nan
+    rrr_last = float(rrr.iloc[-2]) if len(rrr.dropna()) >= 2 else np.nan
+
+    # --- Return as Series with SCALAR values ---
+    result = pd.Series({
+        'FIRM': firm_name,
         'NEW_FORECAST_LAST': forecasts['NEW'],
         'RET_FORECAST_LAST': forecasts['RET'],
         'ACQ_FORECAST_LAST': forecasts['ACQ'],
@@ -1425,32 +1534,56 @@ def firm_forecast_summary_customers(group):
         'RRR_UNCERTAINTY': uncertainties['RRR'],
         'ACQ_VOL': acq_vol,
         'RRR_VOL': rrr_vol,
-        'ACQ_LAST': acq.iloc[-2] if len(acq.dropna()) >= 2 else np.nan,
-        'RRR_LAST': rrr.iloc[-2] if len(rrr.dropna()) >= 2 else np.nan
-    }
+        'ACQ_LAST': acq_last,
+        'RRR_LAST': rrr_last
+    }, name=firm_name)
 
-    return pd.Series(result, name=group['FIRM'].iloc[0])
+    return result
 
 
 # --- Apply across firms ---
 df_forecast_summary = (
     df_long.reset_index()
-           .groupby('FIRM', group_keys=False)
-           .apply(firm_forecast_summary_customers)
-           .reset_index(drop=True)
+    .groupby('FIRM', group_keys=False)
+    .apply(firm_forecast_summary_customers)
+    .reset_index(drop=True)
 )
 
 print("✅ Forecast summary created successfully.")
-print(df_forecast_summary.head())
+print(f"\nShape: {df_forecast_summary.shape}")
+print("\nFirst few rows:")
+print(df_forecast_summary.head(5))
 
+
+# After running the forecasts, print summary report
+print("\n" + "="*60)
+print("SARIMA FORECASTING SUMMARY REPORT")
+print("="*60)
+
+total = SARIMA_STATS['total_forecasts']
+success = SARIMA_STATS['success']
+too_few = SARIMA_STATS['too_few_obs']
+failed = SARIMA_STATS['model_failed']
+
+print(f"\nTotal forecast attempts: {total}")
+print(f"Successful SARIMA fits: {success} ({success/total*100:.1f}%)")
+print(f"Too few observations: {too_few} ({too_few/total*100:.1f}%)")
+print(f"Model convergence failures: {failed} ({failed/total*100:.1f}%)")
+print(f"\nFallback to last value: {too_few + failed} ({(too_few + failed)/total*100:.1f}%)")
+
+# Check for missing values
+print("\n=== Missing Value Summary ===")
+missing_summary = df_forecast_summary.isna().sum()
+print(missing_summary[missing_summary > 0])
 
 # --- Summary stats ---
-summary_uncertainty = df_forecast_summary[['NEW_UNCERTAINTY', 'RET_UNCERTAINTY',
-                                           'ACQ_UNCERTAINTY', 'RRR_UNCERTAINTY',
-                                           'ACQ_VOL', 'RRR_VOL']].describe().T
+summary_cols = ['NEW_UNCERTAINTY', 'RET_UNCERTAINTY', 'ACQ_UNCERTAINTY', 
+                'RRR_UNCERTAINTY', 'ACQ_VOL', 'RRR_VOL']
+summary_uncertainty = df_forecast_summary[summary_cols].describe().T
 
 print("\n📊 Forecast Uncertainty and Volatility Summary:")
 print(summary_uncertainty.round(4))
+
 #==============================================================================
 # 6. Portfolio Analysis
 #==============================================================================
@@ -1460,7 +1593,7 @@ neu anfang
 '''
 file3_path = "C:\\Users\\thkraft\\eCommerce-Goethe Dropbox\\Thilo Kraft\\Thilo(privat)\\Privat\\Research\\RRR_FinancialImplication\\Data\\2025-07-02a-TK-Monthly-Returns_Python.xlsx"
 try:
-    # Read the fundamentals file
+    # Read the file
     monthly_returns = pd.read_excel(file3_path, header=None)
     print("Monthly Return data sucessfully read in")
     print("Shape:", monthly_returns.shape)
