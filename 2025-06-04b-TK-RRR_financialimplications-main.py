@@ -13,7 +13,8 @@ import openpyxl
 import numpy as np
 
 ###To DO
-# add portfolio descriptions
+# add value weighted firm index as benchmark to take care of industry effects 
+# add firm descriptive statistics
 # maybe change code sections merging before data analysis, as when merging I discovered that I need to drop a firm -> backwards now
 
 # Importing the data files
@@ -359,7 +360,7 @@ first_period = df_revenue["Date"].min()
 
 
 # NEW: generic helper – bin by any metric each period, average a target, then average across periods
-def period_quantile_means(df_revenue, company_names, date_col="Date",
+def period_quantile_median(df_revenue, company_names, date_col="Date",
                           sort_metric_tag="#RRR", target_metric_tag="#Revenue_Growth",
                           q=4, labels=None, min_firms=4, lead=0):
     """
@@ -416,20 +417,21 @@ def period_quantile_means(df_revenue, company_names, date_col="Date",
         except ValueError:
             continue
 
-        by_q = df_f.groupby("Q", observed=True)["TARGET"].mean().reindex(labels)
+        by_q = df_f.groupby("Q", observed=True)["TARGET"].median().reindex(labels)
         out = by_q.to_frame().T
         out["Date"] = date
         bin_avg_list.append(out)
 
     df_bin_avg = pd.concat(bin_avg_list, ignore_index=True) if bin_avg_list else pd.DataFrame(columns=labels+["Date"])
-    final_avg = df_bin_avg.drop(columns="Date", errors="ignore").mean(numeric_only=True)
+    final_avg = df_bin_avg.drop(columns="Date", errors="ignore").median(numeric_only=True)
     return df_bin_avg, final_avg
 
-bin_by_RRR, final_avg_growth_by_RRR = period_quantile_means(
+# Current period RRR → Current period Revenue Growth
+bin_by_RRR, final_avg_growth_by_RRR = period_quantile_median(
     df_revenue, company_names,
     sort_metric_tag="#RRR",
     target_metric_tag="#Revenue_Growth",
-    q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
+    q=5, labels=["Q5","Q4","Q3","Q2", "Q1"],
     lead=0  # same period
 )
 print("Current Period RRR → Current Growth:")
@@ -438,7 +440,7 @@ print(final_avg_growth_by_RRR)
 
 
 # Current period Acq_Rate
-bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_means(
+bin_by_Acq_lead0, final_avg_growth_by_Acq_lead0 = period_quantile_median(
     df_revenue, company_names,
     sort_metric_tag="#Acq_Rate",
     target_metric_tag="#Revenue_Growth",
@@ -446,11 +448,11 @@ bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_means(
     lead=0  # same period
 )
 print("\nCurrent Period Acq Rate → Current Growth")
-print(final_avg_growth_by_Acq_lead1)
+print(final_avg_growth_by_Acq_lead0)
 
 
 # Current period RRR → NEXT period Revenue Growth (forecast)
-bin_by_RRR_lead1, final_avg_growth_by_RRR_lead1 = period_quantile_means(
+bin_by_RRR_lead1, final_avg_growth_by_RRR_lead1 = period_quantile_median(
     df_revenue, company_names,
     sort_metric_tag="#RRR",
     target_metric_tag="#Revenue_Growth",
@@ -461,7 +463,7 @@ print("\nCurrent Period RRR → Next Period Growth (Lead=1):")
 print(final_avg_growth_by_RRR_lead1)
 
 # Current period Acq_Rate → NEXT period Revenue Growth
-bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_means(
+bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_median(
     df_revenue, company_names,
     sort_metric_tag="#Acq_Rate",
     target_metric_tag="#Revenue_Growth",
@@ -472,24 +474,25 @@ print("\nCurrent Period Acq Rate → Next Period Growth (Lead=1):")
 print(final_avg_growth_by_Acq_lead1)
 
 
-# Current period Acq_Rate → four period Revenue Growth
+# Current period RRR → four period Revenue Growth
 
-bin_by_RRR_lead4, final_avg_growth_by_RRR_lead2 = period_quantile_means(
+bin_by_RRR_lead4, final_avg_growth_by_RRR_lead4 = period_quantile_median(
     df_revenue, company_names,
     sort_metric_tag="#RRR",
     target_metric_tag="#Revenue_Growth",
     q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
-    lead=4  # two periods ahead
+    lead=4  # four periods ahead
 )
 print("\nCurrent Period RRR → Four Periods Ahead Growth (Lead=4):")
-print(final_avg_growth_by_RRR_lead2)
+print(final_avg_growth_by_RRR_lead4)
 
-bin_by_Acq_lead1, final_avg_growth_by_Acq_lead1 = period_quantile_means(
+# Current period Acq_Rate → four period Revenue Growth
+bin_by_Acq_lead4, final_avg_growth_by_Acq_lead4 = period_quantile_median(
     df_revenue, company_names,
     sort_metric_tag="#Acq_Rate",
     target_metric_tag="#Revenue_Growth",
     q=5, labels=["Q1","Q2","Q3","Q4", "Q5"],
-    lead=1  # next period
+    lead=4  # four periods ahead
 )
 print("\nCurrent Period Acq Rate → Four Periods Ahead Growth (Lead=4):")
 print(final_avg_growth_by_Acq_lead1)
@@ -642,6 +645,7 @@ print(f"Correlation between #Returning Customer and the Estimated Returning Reve
 
 #RRR
 df_long['RRR_PCT'] = df_long['#RRR'] * 100
+
 df_long['RRR_PCT_LAG1'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(1)
 df_long['RRR_LAG'] = df_long['RRR_PCT_LAG1'] / 100
 df_long['RRR_PCT_LAG2'] = df_long.groupby(level='FIRM')['RRR_PCT'].shift(2)
@@ -655,10 +659,10 @@ df_long['ACQ_RATE_PCT_LAG3'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shi
 df_long['ACQ_RATE_PCT_LAG4'] = df_long.groupby(level='FIRM')['ACQ_RATE_PCT'].shift(4)
 
 # "CLV+"
-df_long['RET_REV_ACQ_LAG'] = df_long['NEW_REV_EST'].shift(1) * df_long['RRR_PCT'] / 100
-df_long['RET_REV_ACQ_LAG2'] = df_long['NEW_REV_EST'].shift(2) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100
-df_long['RET_REV_ACQ_LAG3'] = df_long['NEW_REV_EST'].shift(3) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100
-df_long['RET_REV_ACQ_LAG4'] = df_long['NEW_REV_EST'].shift(4) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100 * df_long['RRR_PCT_LAG3'] / 100
+df_long['RET_REV_ACQ_LAG'] = df_long['NEW_REV_EST'].shift(1) * df_long['RRR_PCT'] / 100 * df_long['PM_OPER']
+df_long['RET_REV_ACQ_LAG2'] = df_long['NEW_REV_EST'].shift(2) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['PM_OPER']
+df_long['RET_REV_ACQ_LAG3'] = df_long['NEW_REV_EST'].shift(3) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100 * df_long['PM_OPER']
+df_long['RET_REV_ACQ_LAG4'] = df_long['NEW_REV_EST'].shift(4) * df_long['RRR_PCT'] / 100 * df_long['RRR_PCT_LAG1'] / 100 * df_long['RRR_PCT_LAG2'] / 100 * df_long['RRR_PCT_LAG3'] / 100 * df_long['PM_OPER']
 
 
 #IS_SGA_EXPENSE_PCT
@@ -755,7 +759,99 @@ print(f"Number of Firms: {df_long.index.get_level_values('FIRM').nunique()}")
 # 5. Regression Analysis
 #==============================================================================
 
+### Correlations
+### Correlations
+### Correlations
 
+def analyze_firm_correlations(df_long, var1='RRR_PCT', var2='RRR_PCT_LAG1', min_obs=3):
+    """
+    Calculate and visualize correlation between two variables for each firm.
+    Parameters:
+    -----------
+    df_long : DataFrame with MultiIndex ['FIRM', 'DATE']
+    var1 : str, first variable name (default 'RRR_PCT')
+    var2 : str, second variable name (default 'RRR_PCT_LAG1')
+    min_obs : int, minimum observations required per firm (default 3)
+    
+    Returns:
+    --------
+    corr_df : DataFrame with correlation results per firm
+    """
+    print("\n" + "="*80)
+    print(f" Correlation between {var1} and {var2}")
+    print("="*80)
+    
+    # Calculate correlation for each firm
+    correlations = []
+    for firm in df_long.index.get_level_values('FIRM').unique():
+        firm_data = df_long.xs(firm, level='FIRM')[[var1, var2]].dropna()
+        
+        if len(firm_data) >= min_obs:
+            corr = firm_data[var1].corr(firm_data[var2])
+            correlations.append({
+                'FIRM': firm,
+                'Correlation': corr,
+                'N_Obs': len(firm_data)
+            })
+    
+    # Create DataFrame with results
+    corr_df = pd.DataFrame(correlations)
+    
+    if corr_df.empty:
+        print("No firms with sufficient observations found.")
+        return corr_df
+    
+    # Calculate summary statistics
+    mean_corr = corr_df['Correlation'].mean()
+    median_corr = corr_df['Correlation'].median()
+    #std_corr = corr_df['Correlation'].std()
+    
+    print(f"\nSummary Statistics:")
+    print(f"Mean Correlation:   {mean_corr:.4f}")
+    print(f"Median Correlation: {median_corr:.4f}")
+    print(f"Std Deviation:      {std_corr:.4f}")
+    print(f"Number of Firms:    {len(corr_df)}")
+    
+    print(f"\nDistribution:")
+    print(f"Min:  {corr_df['Correlation'].min():.4f}")
+    print(f"25%:  {corr_df['Correlation'].quantile(0.25):.4f}")
+    print(f"50%:  {corr_df['Correlation'].quantile(0.50):.4f}")
+    print(f"75%:  {corr_df['Correlation'].quantile(0.75):.4f}")
+    print(f"Max:  {corr_df['Correlation'].max():.4f}")
+    
+    # Histogram of correlations
+    plt.figure(figsize=(10, 6))
+    plt.hist(corr_df['Correlation'], bins=30, edgecolor='black', alpha=0.7)
+    plt.axvline(mean_corr, color='red', linestyle='--', linewidth=2, 
+                label=f'Mean = {mean_corr:.3f}')
+    plt.axvline(median_corr, color='green', linestyle='--', linewidth=2, 
+                label=f'Median = {median_corr:.3f}')
+    plt.xlabel(f'Correlation ({var1} vs {var2})')
+    plt.ylabel('Number of Firms')
+    plt.title(f'Distribution of Correlation Across Firms\n({var1} vs {var2})')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    
+    return corr_df
+
+
+
+# LAG1 persistence
+corr_lag1 = analyze_firm_correlations(df_long, var1='RRR_PCT', var2='RRR_PCT_LAG1')
+
+# LAG4 persistence
+corr_lag4 = analyze_firm_correlations(df_long, var1='RRR_PCT', var2='RRR_PCT_LAG4')
+
+# Can also analyze acquisition rate persistence
+corr_acq = analyze_firm_correlations(df_long, var1='ACQ_RATE_PCT', var2='RRR_PCT')
+
+# Can also analyze acquisition rate persistence
+corr_acq = analyze_firm_correlations(df_long, var1='RRR_PCT_LAG1', var2='PM_OPER')
+
+# Can also analyze acquisition rate persistence
+corr_acq = analyze_firm_correlations(df_long, var1='#GROWTH_MIX', var2='EXCESS_RET')
 
 ### function to run regressions and analysis 
 ### function to run regressions and analysis
@@ -829,6 +925,8 @@ def analyze_columns(columns, firm_effect=True, time_effect=True, show_plots=True
 
 analyze_columns(['RRR_PCT', 'RRR_PCT_LAG1','RRR_PCT_LAG2','RRR_PCT_LAG3','RRR_PCT_LAG4'], firm_effect=False, time_effect=False,show_plots=False)
 #nothing
+analyze_columns(['RRR_PCT', 'RRR_PCT_LAG4'], firm_effect=False, time_effect=False,show_plots=False)
+#nothing
 analyze_columns(['IS_SGA_EXPENSE_PCT','ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 #Acq rate + RRR 
 analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
@@ -836,7 +934,9 @@ analyze_columns(['IS_SGA_EXPENSE', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effe
 
 
 
-
+'''
+multiply CLV by average profit margin
+'''
 
 analyze_columns(['IS_OPER_INC_GROWTH_PCT', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RET_REV_ACQ_LAG', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 #nothing
@@ -845,17 +945,19 @@ analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND
 #nice
 analyze_columns(['IS_OPER_INC', 'RET_REV_ACQ_LAG', 'RRR_PCT','IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
 #nice
-analyze_columns(['IS_OPER_INC', 'ACQ_RATE_PCT','RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['IS_OPER_INC','RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
 #nice
 
 analyze_columns(['IS_OPER_INC','#GROWTH_MIX', 'RET_REV_ACQ_LAG', 'RET_REV_ACQ_LAG2','RET_REV_ACQ_LAG3','RET_REV_ACQ_LAG4', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G','IS_SGA_EXPENSE'], firm_effect=True, time_effect=True,show_plots=False)
 #nice GM  not significant
 
 analyze_columns(['PM_OPER', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
-analyze_columns(['IS_OPER_INC', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['IS_OPER_INC_GROWTH_PCT','RRR_PCT', 'RRR_PCT_LAG1'], firm_effect=True, time_effect=True,show_plots=False)
 
 
-
+'''
+maybe add change of RRR -> degative trend signals future negative  growth
+'''
 
 
 
@@ -868,33 +970,14 @@ analyze_columns(['IS_OPER_INC', 'ACQ_RATE_PCT', 'ACQ_RATE_PCT_LAG1','RRR_PCT', '
 new rev est is not significant check why
 '''
 
-analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'RRR_pct_lag1','ACQ_RATE_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
-analyze_columns(['PM_OPER_PCT', 'RRR_pct', 'ACQ_RATE_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['PM_OPER_PCT', 'RRR_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
+analyze_columns(['PM_OPER_PCT', 'RRR_PCT', 'ACQ_RATE_PCT', 'IS_SGA_EXPENSE_PCT'], firm_effect=True, time_effect=True,show_plots=False)
 
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND'], firm_effect=True, time_effect=True,show_plots=False)
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST', 'IS_RD_EXPEND', 'IS_OTHER_OPER_INC', 'IS_COGS_TO_FE_AND_PP_AND_G'], firm_effect=True, time_effect=True,show_plots=True)
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=True, time_effect=True,show_plots=False)
 analyze_columns(['IS_OPER_INC', 'RETAINED_REV_EST', 'NEW_REV_EST'], firm_effect=False, time_effect=False,show_plots=False)
 
-
-analyze_columns(['RETAINED_REV_EST','IS_RD_EXPEND'], firm_effect=False, time_effect=False,show_plots=True)
-plt.figure(figsize=(7, 5))
-plt.scatter(df_long['NEW_REV_EST'], df_long['IS_SGA_EXPENSE'], alpha=0.4)
-plt.xlabel('NEW_REV_EST')
-plt.ylabel('IS_SGA_EXPENSE')
-plt.title('Scatterplot: IS_SGA_EXPENSE vs. NEW_REV_EST')
-plt.grid(True, linestyle='--', alpha=0.5)
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(7, 5))
-plt.scatter(df_long['RETAINED_REV_EST'], df_long['IS_SGA_EXPENSE'], alpha=0.4)
-plt.xlabel('NEW_REV_EST')
-plt.ylabel('IS_SGA_EXPENSE')
-plt.title('Scatterplot: IS_SGA_EXPENSE vs. NEW_REV_EST')
-plt.grid(True, linestyle='--', alpha=0.5)
-plt.tight_layout()
-plt.show()
 
 
 #predict
@@ -1078,6 +1161,11 @@ interaction_df.where(np.triu(np.ones(interaction_df.shape), 1).astype(bool)).sta
 #==============================================================================
 # 7. Cash Flow Forecasting & Uncertainty Analysis (REVISED - SINGLE REGRESSION)
 #==============================================================================
+'''
+summarize and clean up-> what do you really need?
+'''
+
+
 from sklearn.linear_model import LassoCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
@@ -1134,10 +1222,6 @@ print(important_vars if not important_vars.empty else "None (all shrunk to zero)
 
 
 
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-
-
-
 # --- Helper: safe SARIMA forecast ---
 
 # Add global counter dictionary at the top of your forecast section
@@ -1148,15 +1232,14 @@ SARIMA_STATS = {
     'model_failed': 0
 }
 
-
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+import warnings
 def safe_sarima_forecast(y_train):
     """
     Fit SARIMA safely and return (forecast_value, fallback_flag).
     fallback_flag: 0=success, 1=too_few_obs, 2=model_failed
     """
-    from statsmodels.tsa.statespace.sarimax import SARIMAX
-    import warnings
-    
+
     global SARIMA_STATS
     SARIMA_STATS['total_forecasts'] += 1
     
@@ -1216,6 +1299,11 @@ def last_valid_split(series, dates=None):
 
 
 # --- Main Function ---
+
+'''
+summarize firm_forecast_summary & summary_uncertainty
+'''
+
 def firm_forecast_summary(group):
     group = group.sort_values('DATE').copy()
 
@@ -1422,7 +1510,7 @@ summary_uncertainty = pd.DataFrame({
 })
 
 print("📊 Forecast Uncertainty Summary:")
-print(summary_uncertainty.round(4))
+print(summary_uncertainty.round(2))
 
 
 uncertainty_cols = ['CF_UNCERTAINTY', 'PM_UNCERTAINTY', 'RG_UNCERTAINTY', 'CF_GROWTH_UNCERTAINTY']
@@ -1797,9 +1885,6 @@ port_rets_eq, cum_returns_eq = calc_and_plot_portfolio_returns_from_long(
 )
 
 
-
-
-
 #### Calculate and plot portfolio returns with lagged RRR
 
 #no lag
@@ -1862,6 +1947,101 @@ port_rets_vw_lag3, cum_returns_vw_lag4 = calc_and_plot_portfolio_returns_from_lo
 )
 
 
+# Analysing Growth Mix by Quartile with Time Alignment
+
+# =============================================================================
+# Expanded Distribution Analysis by Quartile (RRR, Acquisition Rate, Growth Mix)
+# =============================================================================
+
+def metric_distribution_by_quartile(returns_df, metric_tag):
+    """
+    Analyze distribution of any metric across RRR quartiles.
+    Uses time-aligned quartile assignments and metric values.
+    
+    Parameters:
+    -----------
+    returns_df : DataFrame with columns ['Date', 'FIRM', 'quartile']
+    metric_tag : str, column name in df_long (e.g., '#GROWTH_MIX', 'RRR_PCT', 'ACQ_RATE_PCT')
+    """
+    # Prepare returns data - create QUARTER from Date
+    returns_temp = returns_df[['Date', 'FIRM', 'quartile']].copy()
+    returns_temp = returns_temp.dropna(subset=['quartile'])
+    
+    # Create QUARTER column from Date
+    returns_temp['QUARTER'] = pd.to_datetime(returns_temp['Date']).dt.to_period('Q').dt.to_timestamp('Q', 'end')
+    
+    # Get metric from df_long with proper time alignment
+    df_temp = df_long.reset_index()
+    if metric_tag not in df_temp.columns:
+        print(f"⚠️ Column '{metric_tag}' not found in df_long")
+        return None
+    
+    df_temp[metric_tag] = pd.to_numeric(df_temp[metric_tag], errors='coerce')
+    df_temp['QUARTER'] = pd.to_datetime(df_temp['DATE']).dt.to_period('Q').dt.to_timestamp('Q', 'end')
+    
+    # Merge on FIRM and QUARTER to align time periods
+    merged = returns_temp.merge(
+        df_temp[['FIRM', 'QUARTER', metric_tag]], 
+        on=['FIRM', 'QUARTER'], 
+        how='left'
+    )
+    
+    # Check merge success
+    print(f"Merged rows: {len(merged)}, Non-null {metric_tag}: {merged[metric_tag].notna().sum()}")
+    
+    # Calculate stats by quartile
+    stats = (
+        merged.groupby('quartile')[metric_tag]
+        .agg(['mean', 'median', lambda x: x.quantile(0.25), lambda x: x.quantile(0.75), 'std', 'count'])
+    )
+    stats.columns = ['mean', 'median', 'Q25', 'Q75', 'std', 'count']
+    
+    return stats
+
+
+print("\n" + "="*80)
+print("DISTRIBUTION ANALYSIS BY RRR QUARTILE")
+print("="*80)
+
+# Growth Mix Statistics
+print("\n--- Growth Mix Statistics by Quartile (Time-Aligned) ---")
+gm_stats = metric_distribution_by_quartile(returns, '#GROWTH_MIX')
+if gm_stats is not None:
+    print(gm_stats.round(4))
+
+# RRR Distribution Statistics
+print("\n--- RRR Distribution by Quartile (Time-Aligned) ---")
+rrr_stats = metric_distribution_by_quartile(returns, 'RRR_PCT')
+if rrr_stats is not None:
+    print(rrr_stats.round(4))
+
+# Acquisition Rate Distribution Statistics
+print("\n--- Acquisition Rate Distribution by Quartile (Time-Aligned) ---")
+acq_stats = metric_distribution_by_quartile(returns, 'ACQ_RATE_PCT')
+if acq_stats is not None:
+    print(acq_stats.round(4))
+
+
+# Revenue Growth Rate Distribution Statistics
+print("\n--- Revenue Growth Rate Distribution by Quartile (Time-Aligned) ---")
+rev_growth_stats = metric_distribution_by_quartile(returns, 'REV_GROWTH_PCT')
+if rev_growth_stats is not None:
+    print(rev_growth_stats.round(4))
+
+# Optional: Create a combined summary table
+print("\n--- Combined Summary: Mean Values by Quartile ---")
+combined_summary = pd.DataFrame({
+    'RRR (%)': rrr_stats['mean'] if rrr_stats is not None else np.nan,
+    'Acq Rate (%)': acq_stats['mean'] if acq_stats is not None else np.nan,
+    'Growth Mix': gm_stats['mean'] if gm_stats is not None else np.nan,
+    'Rev Growth (%)': rev_growth_stats['mean'] if rev_growth_stats is not None else np.nan
+})
+print(combined_summary.round(4))
+
+
+
+
+
 
 
 
@@ -1913,6 +2093,8 @@ def portfolio_performance_table(port_ret, benchmark_col='SPX'):
 
         var5 = np.percentile(returns, 5)
         hit = (returns > 0).mean()
+
+
 
         perf.at['Geometric Mean Return', col] = geo_mean
         perf.at['Downside Deviation', col] = dd
@@ -1974,7 +2156,6 @@ for p in portfolios:
 '''
 neu ende
 '''
-
 
 '''
 update with revenue acquisitn
