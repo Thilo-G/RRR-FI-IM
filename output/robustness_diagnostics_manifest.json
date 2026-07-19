@@ -1,0 +1,95 @@
+{
+  "run_timestamp": "2026-07-19T10:27:19",
+  "random_seed": 20260719,
+  "n_bootstrap": 5000,
+  "baseline_ff3_alpha_pct": 1.9197513343488182,
+  "baseline_ff3_t": 2.9385244079164425,
+  "baseline_ff5_alpha_pct": 2.154691866596766,
+  "baseline_ff5_t": 3.286830606495784,
+  "task1_eff_n_q1_summary": {
+    "mean": 3.103161829134949,
+    "median": 2.0671742234415844,
+    "min": 1.677015097931061,
+    "max": 8.28383840984348
+  },
+  "task1_eff_n_q4_summary": {
+    "mean": 10.055389590775235,
+    "median": 10.860675995511702,
+    "min": 4.2956408855793695,
+    "max": 15.403455440101224
+  },
+  "task3_consumer_discretionary": {
+    "n_cd_firms": 90,
+    "n_total_firms": 124,
+    "pct_of_sample": 0.7258064516129032,
+    "avg_n_per_quarter": 82.13333333333334,
+    "avg_n_q1": 20.133333333333333,
+    "avg_n_q4": 20.9,
+    "FF3_alpha_pct": 2.480182975053396,
+    "FF3_t": 3.3585077517930544,
+    "FF3_p": 0.0007836452328507008,
+    "FF3_n_obs": 88.0,
+    "FF3+Mom_alpha_pct": 2.441939990689483,
+    "FF3+Mom_t": 3.2780756502029025,
+    "FF3+Mom_p": 0.00104517380827439,
+    "FF3+Mom_n_obs": 88.0,
+    "FF5_alpha_pct": 2.608421175708247,
+    "FF5_t": 3.739792712174872,
+    "FF5_p": 0.00018417206952087798,
+    "FF5_n_obs": 88.0
+  },
+  "task4_autocorrelation": {
+    "Raw RRR": {
+      "mean": -0.21184510749225124,
+      "median": -0.19774651217776018,
+      "n_firms": 124,
+      "pct_positive": 16.129032258064516
+    },
+    "Adj RRR (industry x time)": {
+      "mean": -0.231133389003481,
+      "median": -0.2266367279538817,
+      "n_firms": 124,
+      "pct_positive": 17.741935483870968
+    },
+    "Raw RRR (pooled)": {
+      "pooled_corr": 0.029097060133039605,
+      "n_pairs": 3700
+    },
+    "Adj RRR (industry x time) (pooled)": {
+      "pooled_corr": 0.03661746153781829,
+      "n_pairs": 3700
+    },
+    "Raw RRR quartile transition diag": {
+      "Q1": 0.34233261339092874,
+      "Q2": 0.32212581344902386,
+      "Q3": 0.3427027027027027,
+      "Q4": 0.598705501618123,
+      "overall_stay_rate": 0.4016216216216216,
+      "n_transitions": 3700
+    },
+    "Adj RRR quartile transition diag": {
+      "Q1": 0.36285097192224625,
+      "Q2": 0.3351409978308026,
+      "Q3": 0.32432432432432434,
+      "Q4": 0.6181229773462783,
+      "overall_stay_rate": 0.41027027027027024,
+      "n_transitions": 3700
+    }
+  },
+  "task6_dividend_yield": {
+    "coverage_n_firms": 111,
+    "coverage_of_total": 124,
+    "q1_minus_q4_gap_pooled": -0.0005468196761100243
+  },
+  "task7_net_of_cost": {
+    "turnover_q1_mean": 0.38195363107934066,
+    "turnover_q4_mean": 0.517327380300895,
+    "turnover_combined_quarterly": 0.8992810113802356,
+    "cost_bps_used": 50.0
+  },
+  "task9_nesting": {
+    "pooled_corr_rrr_srr": 0.17010279938595488,
+    "srr_coverage_n": 3495,
+    "srr_coverage_total": 3503
+  }
+}
