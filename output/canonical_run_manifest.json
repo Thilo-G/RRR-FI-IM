@@ -1,0 +1,105 @@
+{
+  "canonical_run_id": "stage5-20260719",
+  "declared_by": "Stage 5 canonical-run rebuild (table/figure generation and house-style pass)",
+  "declared_at": "2026-07-19",
+  "repo": "Code/RRR-FI-IM (git repo nested inside RRR_FinancialImplication; Paper_LaTeX is NOT tracked by this repo -- see 'known_gaps.paper_latex_not_git_tracked' below)",
+  "head_commit_before_stage5": "2da2487b626a9a6e03ab3f345318f664334edeb1",
+  "head_commit_after_output_refresh": "5c2ef23fc3a0c236d244a6891f5823f8b06a03c6",
+  "timing_source_of_truth": "build_holding_panel() in analysis_v2.py: 2-month formation lag, 3-month hold, simple-return value-weighted aggregation (introduced in commit 1fce67f)",
+
+  "source_scripts": [
+    {
+      "script": "analysis_v2.py",
+      "role": "Source of truth for portfolio timing/construction (build_holding_panel, value_weighted_market, build_portfolio_returns, run_factor_regressions, newey_west_ols, safe_quartile). NOT edited in Stage 5. Re-run once during Stage 5 (unmodified) to refresh output artifacts that were stale relative to commit 1fce67f -- see refresh_run below.",
+      "not_edited": true
+    },
+    {
+      "script": "identification_battery.py",
+      "role": "QMJ/BAB confound battery, RRR-vs-future-beta (superseded by future_beta_retry.py), RRR x Size/BTM double sorts (excluded from paper per author decision), Sloan-style persistence (both DVs), AR-winsorized Fama-MacBeth horse race, FM + revenue-growth control (excluded per author decision, multicollinearity artifact).",
+      "output_file": "output/identification_battery.xlsx",
+      "not_edited": true,
+      "known_gap": "Task 4 Fama-MacBeth diff-of-diff statistic (coef=1.7845, t=5.92, p<.001, T=30 quarters, for the OPINC_ROA_LEAD 1/99-winsorized row) is computed and printed to console (line ~690) but never added to the exported rows list, so it is not in the committed workbook. Re-verified via a clean re-run of the unmodified script (2026-07-19); all OTHER Task 4 figures from that re-run matched the committed workbook exactly. Cited in tab_sloan_persistence.tex's note with this provenance."
+    },
+    {
+      "script": "robustness_diagnostics.py",
+      "role": "9-task reviewer-style robustness battery: concentration (effective-N/HHI, exclude-top-K), block bootstrap + subperiod stability, Consumer-Discretionary-only, autocorrelation reconciliation, full-quartile monotonicity, dividend-yield gap (yfinance), net-of-cost alpha, H2a/H2b asymmetry, SRR/SoRR nesting.",
+      "output_file": "output/robustness_diagnostics.xlsx",
+      "not_edited": true,
+      "known_gap": "Task 3 (Consumer-Discretionary-only alpha) is computed (main() line ~1231, results['task3'] = task3_consumer_discretionary_only(...)) but is missing from the `sheets = {...}` export dict (main() lines ~1245-1263) that gets written to the committed workbook -- every other task (1,2,4,5,6,7,8,9) has a corresponding T*_ sheet; Task 3 does not. Looks like an omission in the already-committed script, not an intentional exclusion. Figures used in tab_robustness_consolidated.tex (FF3 alpha=2.4802%/mo t=3.359 p<.001 N=88; FF5 alpha=2.6084%/mo t=3.740 p<.001 N=88; 90/124 CD firms, 82.1 avg firms/quarter in the CD-only sort) are from a clean re-run of the unmodified script (2026-07-19, RANDOM_SEED=20260719 fixed, Task 3 does not consume the RNG). Every OTHER number from that same re-run (Tasks 1,2,4,5,6,7,8,9, including the live-yfinance-dependent Task 6 dividend-yield figures) reproduced the committed workbook exactly, cell-for-cell -- confirmed via a full numeric diff, not just console inspection -- which is why the Task 3 console figures are treated as a faithful stand-in for what the committed workbook would show had the export dict included it. p-values for this row are reported only to the precision the console printed (<.001), not fabricated to a false precision."
+    },
+    {
+      "script": "exclude_amazon_robustness.py",
+      "role": "Full-period AMZN-exclusion robustness check (separate from the per-quarter top-K exclusion in robustness_diagnostics.py Task 1).",
+      "output_file": "output/exclude_amazon_robustness.xlsx",
+      "not_edited": true
+    },
+    {
+      "script": "future_beta_retry.py",
+      "role": "Rank-transformed, outlier-robust retry of whether RRR predicts a firm's own future market beta (supersedes identification_battery.py Task 2's 36-month-window version).",
+      "output_file": "output/future_beta_retry.xlsx",
+      "not_edited": true
+    },
+    {
+      "script": "performance_metrics.py",
+      "role": "Authoritative source for the paper's performance/risk metrics table (Sharpe/Sortino/tracking error/IR/downside-upside beta/max drawdown/turnover/hit-rate) and the SoRR (Share of Retained Revenue) sub-analysis (alpha, turnover/stability comparison, RRR-SoRR correlation). Per author decision, analysis_v2.py's risk_analysis.xlsx is treated as an internal diagnostic that does not feed any paper table.",
+      "output_files": ["output/performance_metrics_summary.xlsx", "output/performance_sorr_summary.xlsx", "output/performance_drawdown_series.xlsx", "output/performance_upside_capture_series.xlsx"],
+      "not_edited": true
+    }
+  ],
+
+  "refresh_run_2026-07-19": {
+    "description": "Before Stage 5 table work began, git status showed generate_tables_figures.py already mid-edit (kept, built on) and 9 analysis_v2.py output files (fama_macbeth.xlsx, risk_analysis.xlsx, factor_reg_Lag2_adj.xlsx, factor_reg_Placebo_HighGrowth_Median.xlsx, capm_vs_sp500.xlsx, industry_descriptives.xlsx, pooled_descriptives.xlsx, portfolio_characteristics.xlsx, quartile_persistence.xlsx, signal_persistence_comparison.xlsx, plus the alt_metric/*.pdf figures) modified but uncommitted, predating the 1fce67f timing fix in their last-committed form. Verified (a) analysis_v2.py itself had zero working-tree diff vs HEAD, (b) no randomness in the script, (c) re-running it exactly reproduced the pre-existing uncommitted values, and (d) the refreshed headline/CAPM/FMB/quartile-persistence/AR(1) figures matched every number already given as confirmed ground truth. Committed as 5c2ef23.",
+    "run_id_in_script": "20260719-091029 (original discovery run) / 20260719-222822 (re-verification run, numerically identical)",
+    "verified_numerically_identical": true
+  },
+
+  "newey_west_lag_bugfix": {
+    "description": "generate_tables_figures.py's own inline portfolio-regression helper (_run_inline_factor_reg) called newey_west_ols(y, X, max_lags=NW_LAGS) with NW_LAGS hardcoded to 4, but analysis_v2.py's run_factor_regressions() -- the function identification_battery.py / robustness_diagnostics.py / exclude_amazon_robustness.py all use for the canonical baseline -- calls newey_west_ols(y, X) with no max_lags, letting it fall through to the Newey-West (1994) automatic-bandwidth rule (4*(T/100)**(2/9), which evaluates to 3 for this sample). This produced alphas, R-squareds and N that matched the canonical baseline exactly, but standard errors that silently did not (e.g. baseline ADJ RRR FF3: SE=0.6433 vs canonical 0.6533, t implied 2.98 vs canonical 2.94). Found by hand-verifying tab_headline_summary.tex against identification_battery.xlsx's T1_QMJ_BAB sheet. Fixed by removing the max_lags override; re-verified the fix reproduces the canonical SE (0.6533/0.6556) exactly across every affected table (tab_portfolio_alphas_raw/adj, tab_portfolio_alphas_ar_raw/adj, tab_robustness_nocovid/ew, tab_placebo, tab_headline_summary, tab_robustness_consolidated, tab_sorr).",
+    "affected_tables_before_fix": ["tab_portfolio_alphas_raw.tex", "tab_portfolio_alphas_adj.tex", "tab_portfolio_alphas_ar_raw.tex", "tab_portfolio_alphas_ar_adj.tex", "tab_robustness_nocovid.tex", "tab_robustness_ew.tex", "tab_placebo.tex", "tab_headline_summary.tex", "tab_robustness_consolidated.tex", "tab_sorr.tex"]
+  },
+
+  "run_inline_factor_reg_column_bugfix": {
+    "description": "_run_inline_factor_reg() hardcoded portfolio_cols = [c for c in ['Q1','Q2','Q3','Q4','Q1-Q4'] if c in port.columns], so any caller with differently-named portfolio columns (port_placebo_m: High/Low/High-Low) matched nothing and returned an empty results dict with no error -- _build_panel_table() then silently rendered every cell of tab_placebo.tex blank. Fixed by auto-detecting portfolio_cols as every column except MKT (verified equivalent to the old hardcoded list for every Q1-Q4 caller); the zero-cost-spread RF-subtraction check was generalized from `== 'Q1-Q4'` to `'-' in port_col` for the same reason.",
+    "affected_tables_before_fix": ["tab_placebo.tex (silently blank, no error)"]
+  },
+
+  "known_gaps": {
+    "paper_latex_not_git_tracked": "Paper_LaTeX/ (containing tables/ and figures/) is a SIBLING of Code/RRR-FI-IM under RRR_FinancialImplication/, not a subdirectory of it, so it is outside the Code/RRR-FI-IM git repo's root and cannot be included in commits made there. RRR_FinancialImplication/ itself has no .git of its own. The only git repository that could see Paper_LaTeX/ files is a very broad repository rooted at C:\\Users\\thkraft (the user's home directory), which was not touched -- it appears to be a general/unmanaged repo covering unrelated personal directories, not a curated project repo, and committing this paper's LaTeX output into it without being asked seemed like the wrong call. Practical effect: every .tex table file listed below is new/updated on disk (and, if this project relies on Dropbox's own version history for Paper_LaTeX, backed by that instead of git) but not captured in any git commit made during Stage 5. Flagged for the author to resolve -- e.g. by git-initializing Paper_LaTeX or extending the Code/RRR-FI-IM repo's root -- rather than guessing.",
+    "four_quarter_trailing_rrr_lr_rrr": "Ported forward from an already-computed panel column (ADJ_LR_RRR_PCT) that pre-existed in build_holding_panel()'s alt_cols; the portfolio sort and factor regression were completed in generate_tables_figures.py itself (not one of the five locked analytical scripts) and persisted to output/lr_rrr_robustness_stage5.xlsx for traceability. This is the one number in the deliverable that was computed by the presentation-stage script rather than pulled pre-computed, per the task's explicit 'port forward if straightforward' instruction for this specific robustness variant."
+  },
+
+  "tex_tables": [
+    {"file": "tab_summary_stats.tex", "source": "output/pooled_descriptives.xlsx (analysis_v2.py)", "status": "reused pattern; fixed missing threeparttable wrapper + dollar-vs-rate decimal precision split"},
+    {"file": "tab_sample_composition.tex", "source": "output/industry_descriptives.xlsx (analysis_v2.py)", "status": "reused pattern; fixed missing threeparttable wrapper, missing $-$ escaping on negative values, precision to 4dp"},
+    {"file": "tab_portfolio_alphas_raw.tex", "source": "inline (_run_inline_factor_reg on panel ADJ_RRR/RRR quartiles)", "status": "regenerated under corrected timing + NW lag fix"},
+    {"file": "tab_portfolio_alphas_adj.tex", "source": "inline", "status": "regenerated under corrected timing + NW lag fix; headline table"},
+    {"file": "tab_portfolio_alphas_ar_raw.tex", "source": "inline", "status": "regenerated under corrected timing + NW lag fix"},
+    {"file": "tab_portfolio_alphas_ar_adj.tex", "source": "inline", "status": "regenerated under corrected timing + NW lag fix"},
+    {"file": "tab_fmb.tex", "source": "output/fama_macbeth.xlsx (analysis_v2.py)", "status": "regenerated with refreshed (post-timing-fix) source data; unaffected by the NW-lag bug (separate Fama-MacBeth codepath)"},
+    {"file": "tab_risk_stats.tex", "source": "output/performance_metrics_summary.xlsx (performance_metrics.py)", "status": "REPLACED: was an inline cumsum()-based recomputation that silently assumed log returns after Step 0b switched to simple returns; now reads performance_metrics.py's authoritative battery. Item 11."},
+    {"file": "tab_robustness_nocovid.tex", "source": "inline", "status": "regenerated under corrected timing + NW lag fix"},
+    {"file": "tab_robustness_ew.tex", "source": "inline", "status": "regenerated under corrected timing + NW lag fix"},
+    {"file": "tab_placebo.tex", "source": "inline", "status": "regenerated; fixed the empty-results-dict bug (see run_inline_factor_reg_column_bugfix)"},
+    {"file": "tab_portfolio_characteristics.tex", "source": "output/portfolio_characteristics.xlsx (analysis_v2.py)", "status": "reused pattern; was orphaned (loaded but never rendered); fixed dollar-vs-rate decimal precision split"},
+    {"file": "tab_signal_persistence.tex", "source": "output/signal_persistence_comparison.xlsx + output/quartile_persistence.xlsx (analysis_v2.py)", "status": "reused pattern; was orphaned (no code path). Item 6."},
+    {"file": "tab_robustness_lag2.tex", "source": "output/factor_reg_Lag2_adj.xlsx (analysis_v2.py)", "status": "reused pattern via new _xlsx_to_reg_results() adapter; was orphaned (no code path)"},
+    {"file": "tab_headline_summary.tex", "source": "inline (Q1-Q4 alpha) + output/capm_vs_sp500.xlsx (analysis_v2.py)", "status": "NEW. Item 1."},
+    {"file": "tab_qmj_bab.tex", "source": "output/identification_battery.xlsx, sheet T1_QMJ_BAB", "status": "NEW. Item 2."},
+    {"file": "tab_robustness_consolidated.tex", "source": "inline + output/robustness_diagnostics.xlsx (sheets T2_Bootstrap, T2_Subperiod, T7_NetOfCost) + robustness_diagnostics.py Task 3 console (see known gap) + output/lr_rrr_robustness_stage5.xlsx", "status": "NEW. Item 3."},
+    {"file": "tab_concentration.tex", "source": "output/robustness_diagnostics.xlsx (sheets T1_EffN_Q1, T1_EffN_Q4, T1_ExcludeTopK) + output/exclude_amazon_robustness.xlsx (Summary_Comparison)", "status": "NEW. Item 4."},
+    {"file": "tab_quartile_monotonicity.tex", "source": "output/robustness_diagnostics.xlsx, sheet T5_QuartileAlphas", "status": "NEW. Item 5."},
+    {"file": "tab_h2ab_asymmetry.tex", "source": "output/robustness_diagnostics.xlsx (sheets T8_H2a_Bootstrap, T8_H2b_Continuous, T8_H2b_Dummy)", "status": "NEW. Item 7, includes non-significant results in full."},
+    {"file": "tab_sloan_persistence.tex", "source": "output/identification_battery.xlsx, sheet T4_sloan_persistence + console-recovered FM stat (see known gap)", "status": "NEW. Item 8, honest mixed result."},
+    {"file": "tab_future_beta_retry.tex", "source": "output/future_beta_retry.xlsx (sheets robust_rank_winsor_FM, outlier_diagnosis)", "status": "NEW. Item 9, heavily caveated minor note; placement (main vs appendix) left to author."},
+    {"file": "tab_sorr.tex", "source": "output/performance_sorr_summary.xlsx (sheets SoRR_LongShort_Alpha, Signal_Turnover_Comparison, RRR_SoRR_Correlation)", "status": "NEW. Item 10."},
+    {"file": "tab_dividend_check.tex", "source": "output/robustness_diagnostics.xlsx (sheets T6_DivYield_Pooled, T6_DivYield_FirmLevel, T6_Failures)", "status": "NEW. Item 12."}
+  ],
+
+  "item_13_ar_construct_validity": "Per author decision, one sentence not a dedicated table. Source: output/identification_battery.xlsx, sheet T5_AR_winsor_FM (already committed, unchanged). Sentence for Stage 6: RRR retains a positive Fama-MacBeth coefficient (t=1.75 univariate) even against a 1st/99th-percentile winsorized version of AR (t=1.14 univariate for winsorized AR alone); RRR remains larger than winsorized AR in every joint specification and, with controls, becomes significant (t=2.27, p=.031) while winsorized AR stays insignificant and sign-flips.",
+
+  "superseded_tables_moved": {
+    "location": "Paper_LaTeX/tables/_superseded/",
+    "files": ["tab_robustness.tex", "tab_portfolio_alphas.tex", "tab_portfolio_alphas_ar.tex", "tab_persistence.tex"],
+    "reason": "Predate the 1fce67f timing fix (stale numbers) and are not \\input{} anywhere in Paper_LaTeX/sections/ (confirmed via grep); superseded by the raw/adj-split and renamed replacements already in the paper. Moved rather than deleted because Paper_LaTeX has no git history to fall back on (see known_gaps.paper_latex_not_git_tracked)."
+  }
+}
