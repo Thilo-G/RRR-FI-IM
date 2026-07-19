@@ -1,0 +1,61 @@
+{
+  "run_timestamp": "2026-07-19T15:49:30",
+  "amzn_firm_id": "AMZN US EQUITY",
+  "n_firms_baseline": 124,
+  "n_firms_amzn_excluded": 123,
+  "total_sample_quarters": 31,
+  "n_quarters_amzn_present": 31,
+  "n_quarters_amzn_in_q1_original": 24,
+  "pct_of_amzn_quarters_in_q1": 0.7741935483870968,
+  "pct_of_all_quarters_amzn_in_q1": 0.7741935483870968,
+  "amzn_q1_weight_max_pct": 76.80251560258276,
+  "amzn_q1_weight_last_quarter_pct": 70.8039915847933,
+  "amzn_q1_weight_last_quarter_label": "2024Q3",
+  "n_firm_quarters_promoted_into_q1": 13,
+  "baseline": {
+    "FF3_alpha_pct": 1.9197513343488182,
+    "FF3_t": 2.9385244079164425,
+    "FF3_p": 0.0032977869022697,
+    "FF3_n_obs": 88.0,
+    "FF5_alpha_pct": 2.154691866596766,
+    "FF5_t": 3.286830606495784,
+    "FF5_p": 0.0010132176200538354,
+    "FF5_n_obs": 88.0
+  },
+  "amzn_excluded": {
+    "FF3_alpha_pct": 1.6675554638052994,
+    "FF3_t": 2.80222101122252,
+    "FF3_p": 0.005075209178717817,
+    "FF3_n_obs": 88.0,
+    "FF5_alpha_pct": 1.4996118457341556,
+    "FF5_t": 2.5943597410830512,
+    "FF5_p": 0.009476727146827886,
+    "FF5_n_obs": 88.0
+  },
+  "delta": {
+    "FF3_alpha_pct": -0.2521958705435188,
+    "FF3_t": -0.13630339669392244,
+    "FF5_alpha_pct": -0.6550800208626104,
+    "FF5_t": -0.6924708654127327
+  },
+  "eff_n_q1_baseline_summary": {
+    "mean": 3.103161829134949,
+    "median": 2.0671742234415844,
+    "min": 1.677015097931061,
+    "max": 8.28383840984348
+  },
+  "eff_n_q1_amzn_excluded_summary": {
+    "mean": 7.460887018242263,
+    "median": 7.490790782715978,
+    "min": 6.086263713435544,
+    "max": 8.897170402598539
+  },
+  "new_top_name_most_frequent": {
+    "name": "SBUX US EQUITY",
+    "n_quarters": 14,
+    "share_of_quarters": 0.4666666666666667
+  },
+  "new_top_name_max_single_quarter_weight_pct": 31.89295698925315,
+  "new_top_name_max_single_quarter_weight_name": "TMUS US EQUITY",
+  "new_top_name_max_single_quarter_weight_quarter": "2024Q3"
+}
