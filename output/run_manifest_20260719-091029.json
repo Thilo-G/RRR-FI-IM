@@ -1,0 +1,10 @@
+{
+  "run_id": "20260719-091029",
+  "timestamp": "2026-07-19T09:10:48",
+  "form_lag_months": 2,
+  "hold_months": 3,
+  "n_firms": 124,
+  "expected_n_firms": 124,
+  "python_version": "3.11.4",
+  "pandas_version": "2.1.1"
+}
